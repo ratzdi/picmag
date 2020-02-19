@@ -32,3 +32,6 @@
 *.out
 *.app
 
+# Output directories
+bin
+obj
