@@ -33,7 +33,7 @@ namespace picmag
         void HandleCreateDatabase(string dbFilepath)
         {
             var databaseTaskCancellationTokenSource = new CancellationTokenSource();
-            var database = new Database(null, "URI=file:SqliteTest.db", databaseTaskCancellationTokenSource, log);
+            var database = new Database(null, "URI=file:" + dbFilepath, databaseTaskCancellationTokenSource, log);
             var imagesTable = database.Images;
             imagesTable.Create();
             log.PrintDebug(tag, "Main: create Database: Sqlite database created.");
