@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,13 +15,13 @@ namespace picmag
         }
         void PrintUsage()
         {
-            Console.WriteLine("Application Usage:");
-            Console.WriteLine("-d <database filepath> <output filepath>");
-            Console.WriteLine("\t Find duplicates in database and write results to file.");
-            Console.WriteLine("-c <database filepath>");
-            Console.WriteLine("\t Creates a new Sqlite database file if no one exists in current directory");
-            Console.WriteLine("-i <database filepath> <directory path>");
-            Console.WriteLine("\t Find and insert images to database recursively from directory path.");
+            var executingAssembly = System.Reflection.Assembly.GetExecutingAssembly();
+            var fileVersionInfo = FileVersionInfo.GetVersionInfo(executingAssembly .Location);
+            Console.WriteLine("Usage of {0} v{1}:", fileVersionInfo.ProductName, fileVersionInfo.FileVersion);
+            Console.WriteLine("\t-d <DB filepath> <output filepath> - Find duplicates and write results to file.");
+            Console.WriteLine("\t-c <DB filepath> - Creates new database file");
+            Console.WriteLine("\t-i <DB filepath> <source path> <target path> - Import images");
+            Console.WriteLine("\t-h help");
         }
         void HandleFindDuplicates(string dbFilepath, string resultFilepath)
         {
@@ -68,59 +69,58 @@ namespace picmag
             log.PrintDebug(tag, "Main: files found in root directory " + imageFinder.TotalFilesCount);
             log.PrintDebug(tag, "Main: files inserted to database " + database.InsertedImageCount);
         }
-        void _Main(string []args)
+        void Start(string []args)
         {
-            if (args.Length == 0)
+            if(args.Length == 0 || args[0] == "-h")
             {
                 PrintUsage();
+                return;
             }
-            else
+
+            if (args[0] == "-d")
             {
-                if (args[0] == "-d")
+                if (args.Length == 3)
                 {
-                    if (args.Length == 3)
-                    {
-                        log.PrintDebug(tag, "Main: database filepath: " + args[1]);
-                        log.PrintDebug(tag, "Main: Result filepath: " + args[2]);
-                        HandleFindDuplicates(args[1], args[2]);
-                    }
-                    else
-                    {
-                        PrintUsage();
-                    }
+                    log.PrintDebug(tag, "Main: database filepath: " + args[1]);
+                    log.PrintDebug(tag, "Main: Result filepath: " + args[2]);
+                    HandleFindDuplicates(args[1], args[2]);
                 }
-                else if (args[0] == "-c")
+                else
                 {
-                    if (args.Length == 2)
-                    {
-                        log.PrintDebug(tag, "Main: Create new database...");
-                        log.PrintDebug(tag, "Main: Database filepath: " + args[1]);
-                        HandleCreateDatabase(args[1]);
-                    }
-                    else
-                    {
-                        PrintUsage();
-                    }
+                    PrintUsage();
                 }
-                else if (args[0] == "-i")
+            }
+            else if (args[0] == "-c")
+            {
+                if (args.Length == 2)
                 {
-                    if (args.Length == 4)
-                    {
-                        log.PrintDebug(tag, "Main: Database filepath: " + args[1]);
-                        log.PrintDebug(tag, "Main: Image source path: " + args[2]);
-                        log.PrintDebug(tag, "Main: Image destination path: " + args[3]);
-                        HandleImportImages(args[1], args[2], args[3]);
-                    }
-                    else
-                    {
-                        PrintUsage();
-                    }
+                    log.PrintDebug(tag, "Main: Create new database...");
+                    log.PrintDebug(tag, "Main: Database filepath: " + args[1]);
+                    HandleCreateDatabase(args[1]);
+                }
+                else
+                {
+                    PrintUsage();
+                }
+            }
+            else if (args[0] == "-i")
+            {
+                if (args.Length == 4)
+                {
+                    log.PrintDebug(tag, "Main: Database filepath: " + args[1]);
+                    log.PrintDebug(tag, "Main: Image source path: " + args[2]);
+                    log.PrintDebug(tag, "Main: Image destination path: " + args[3]);
+                    HandleImportImages(args[1], args[2], args[3]);
+                }
+                else
+                {
+                    PrintUsage();
                 }
             }
         }
         static void Main(string[] args)
         {
-            new Program(new Log())._Main(args);
+            new Program(new Log()).Start(args);
         }
     }
 }

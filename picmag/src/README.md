@@ -1,4 +1,5 @@
-# image-finder
+# picmag
+Console application to sort out JPG images.
 
 ## Dependencies
 - libsqlite3-dev
@@ -8,4 +9,4 @@
 dotnet build
 
 ## Run
-dotnet run
+./picmag -h
