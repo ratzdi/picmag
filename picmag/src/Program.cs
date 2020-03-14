@@ -7,6 +7,7 @@ namespace picmag
 {
     class Program
     {
+        private const String programName = "picmag";
         private ILog log;
         private const String tag = "Main";
         private readonly String relDatabaseFilepath = System.IO.Path.Combine(".picmag", "database.sqlite");
@@ -120,7 +121,10 @@ namespace picmag
 
         static void Main(string[] args)
         {
-            new Program(new FileLog("./picmag.log")).Start(args);
+            new Program(new FileLog(
+                System.IO.Path.Combine(
+                    System.Environment.CurrentDirectory, 
+                    programName + ".log"))).Start(args);
         }
     }
 }
