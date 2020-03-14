@@ -7,16 +7,15 @@ namespace picmag
 {
     public class FileLog : Log
     {
-        private string _outputFilepath;
+        private string outputFilepath;
         public FileLog(string outputFilepath)
         {
-            _outputFilepath = outputFilepath;
+            this.outputFilepath = outputFilepath;
         }
         protected override void Print(string logLine)
         {
             base.Print(logLine);
-
-            System.IO.File.AppendAllText(_outputFilepath, logLine + System.Environment.NewLine);
+            System.IO.File.AppendAllTextAsync(outputFilepath, logLine + System.Environment.NewLine);
         }
     }
 }
