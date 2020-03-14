@@ -16,6 +16,7 @@ namespace picmag
         {
             base.Print(logLine);
             System.IO.File.AppendAllTextAsync(outputFilepath, logLine + System.Environment.NewLine);
+            System.Diagnostics.Debug.WriteLine(logLine);
         }
     }
 }
