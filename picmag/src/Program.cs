@@ -9,28 +9,31 @@ namespace picmag
     {
         private ILog log;
         private const String tag = "Main";
+        private readonly String relDatabaseFilepath = System.IO.Path.Combine(".picmag", "database.sqlite");
+
         private Program(ILog log)
         {
             this.log = log;
         }
+        
         void PrintUsage()
         {
             var executingAssembly = System.Reflection.Assembly.GetExecutingAssembly();
             var fileVersionInfo = FileVersionInfo.GetVersionInfo(executingAssembly .Location);
             Console.WriteLine("Usage of {0} v{1}:", fileVersionInfo.ProductName, fileVersionInfo.FileVersion);
             Console.WriteLine("\t-d <DB filepath> <output filepath> - Find duplicates and write results to file.");
-            Console.WriteLine("\t-c <DB filepath> - Creates new database file");
-            Console.WriteLine("\t-i <DB filepath> <source path> <target path> - Import images");
+            Console.WriteLine("\t-i <source path> <target path> - Import images");
             Console.WriteLine("\t-h help");
         }
+
         void HandleFindDuplicates(string dbFilepath, string resultFilepath)
         {
             var databaseTaskCancellationTokenSource = new CancellationTokenSource();
             var database = new Database(null, "URI=file:" + dbFilepath, databaseTaskCancellationTokenSource, log);
-            var imageTable = database.Images;
-            var count = imageTable.FindDuplicates();
+            var count = database.Images.FindDuplicates();
             log.PrintDebug(tag, "Find Duplicates: number of duplicates " + count);
         }
+
         void HandleCreateDatabase(string dbFilepath)
         {
             var databaseTaskCancellationTokenSource = new CancellationTokenSource();
@@ -39,6 +42,7 @@ namespace picmag
             imagesTable.Create();
             log.PrintDebug(tag, "Main: create Database: Sqlite database created.");
         }
+
         void HandleImportImages(string databasePath, string sourcePath, string destinationPath)
         {
             Task importTask, databaseTask;
@@ -69,6 +73,7 @@ namespace picmag
             log.PrintDebug(tag, "Main: files found in root directory " + imageFinder.TotalFilesCount);
             log.PrintDebug(tag, "Main: files inserted to database " + database.InsertedImageCount);
         }
+
         void Start(string []args)
         {
             if(args.Length == 0 || args[0] == "-h")
@@ -90,27 +95,21 @@ namespace picmag
                     PrintUsage();
                 }
             }
-            else if (args[0] == "-c")
-            {
-                if (args.Length == 2)
-                {
-                    log.PrintDebug(tag, "Main: Create new database...");
-                    log.PrintDebug(tag, "Main: Database filepath: " + args[1]);
-                    HandleCreateDatabase(args[1]);
-                }
-                else
-                {
-                    PrintUsage();
-                }
-            }
             else if (args[0] == "-i")
             {
-                if (args.Length == 4)
+                if (args.Length == 3)
                 {
-                    log.PrintDebug(tag, "Main: Database filepath: " + args[1]);
-                    log.PrintDebug(tag, "Main: Image source path: " + args[2]);
-                    log.PrintDebug(tag, "Main: Image destination path: " + args[3]);
-                    HandleImportImages(args[1], args[2], args[3]);
+                    var databaseFullpath = System.IO.Path.Combine(args[2], relDatabaseFilepath);
+                    if (!System.IO.File.Exists(databaseFullpath))
+                    {
+                        var utils = new Utils();
+                        utils.CreateDirectoryPath(databaseFullpath);
+                        HandleCreateDatabase(databaseFullpath);
+                    }
+                    log.PrintDebug(tag, "Main: Database filepath: {0}", databaseFullpath);
+                    log.PrintDebug(tag, "Main: Image source path: {0}", args[1]);
+                    log.PrintDebug(tag, "Main: Image destination path: {0}", args[2]);
+                    HandleImportImages(databaseFullpath, args[1], args[2]);
                 }
                 else
                 {
@@ -118,6 +117,7 @@ namespace picmag
                 }
             }
         }
+
         static void Main(string[] args)
         {
             new Program(new Log()).Start(args);
