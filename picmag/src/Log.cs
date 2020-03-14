@@ -18,23 +18,32 @@ namespace picmag
                 return Thread.CurrentThread.CurrentCulture;
             }
         }
-        private void Print(String tag, String level, String msg)
+        protected virtual string FormatLogLine(String tag, String level, String msg)
         {
-            Console.WriteLine("[{0}][{1,4}][{2}]: {3}", DateTime.Now.ToString("ddMMyy-HHmmss.ffff"),
+            StringBuilder stringBuilder = new StringBuilder();
+            stringBuilder.AppendFormat(this.FormatProvider, "[{0}][{1,4}][{2}]: {3}", DateTime.Now.ToString("ddMMyy-HHmmss.ffff"),
                 tag.Length >= 4 ? tag.Substring(0, 4) : tag, level, msg);
+            return stringBuilder.ToString();
+        }
+        protected virtual void Print(String logLine)
+        {
+            Console.WriteLine(logLine);
         }
         public void PrintDebug(String tag, String format, params Object[] args)
         {
-            Print(tag, "D", String.Format(FormatProvider, format, args));
+            var logLine = FormatLogLine(tag, "D", String.Format(FormatProvider, format, args));
+            Print(logLine);
         }
         public void PrintError(String tag, String format, params Object[] args)
         {
-            Print(tag, "E", String.Format(FormatProvider, format, args));
+            var logLine = FormatLogLine(tag, "E", String.Format(FormatProvider, format, args));
+            Print(logLine);
         }
 
         public void PrintInfo(String tag, String format, params Object[] args)
         {
-            Print(tag, "I", String.Format(FormatProvider, format, args));
+            var logLine = FormatLogLine(tag, "I", String.Format(FormatProvider, format, args));
+            Print(logLine);
         }
     }
 }

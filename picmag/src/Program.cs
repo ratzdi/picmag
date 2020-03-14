@@ -120,7 +120,7 @@ namespace picmag
 
         static void Main(string[] args)
         {
-            new Program(new Log()).Start(args);
+            new Program(new FileLog("./picmag.log")).Start(args);
         }
     }
 }
