@@ -173,6 +173,7 @@ namespace picmag
                             {
                                 // TODO: undo insert
                                 fileCopied = false;
+                                log.PrintError(tag, ex.Message);
                                 log.PrintError(tag, ex.StackTrace);
                             }
                             if (fileCopied)
