@@ -71,9 +71,9 @@ namespace picmag
 
             databaseTask.Wait();
 
-            log.PrintDebug(tag, "Main: files found in source directory " + imageFinder.TotalFilesCount);
-            log.PrintDebug(tag, "Main: files inserted to database and copied to target directory " + database.InsertedImageCount);
-            log.PrintError(tag, "Main: files already imported " + database.AlreadyImportedFileCounter);
+            log.PrintDebug(tag, "Main: files found in source path " + imageFinder.TotalFilesCount);
+            log.PrintDebug(tag, "Main: files inserted to database and copied to target path " + database.InsertedImageCount);
+            log.PrintError(tag, "Main: files already existing on target path and not imported " + database.AlreadyImportedFileCounter);
         }
 
         void Start(string []args)
