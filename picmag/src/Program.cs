@@ -41,7 +41,7 @@ namespace picmag
             var database = new Database(null, "URI=file:" + dbFilepath, databaseTaskCancellationTokenSource, log);
             var imagesTable = database.Images;
             imagesTable.Create();
-            log.PrintDebug(tag, "Main: create Database: Sqlite database created.");
+            log.PrintDebug(tag, "create Database: Sqlite database created.");
         }
 
         void HandleImportImages(string databasePath, string sourcePath, string destinationPath)
@@ -63,7 +63,7 @@ namespace picmag
             importTask.Wait();
             while (database.GetImageQueueSize() > 0)
             {
-                log.PrintDebug(tag, "Main: wait for Database: {0}", database.GetImageQueueSize());
+                log.PrintDebug(tag, "wait for Database: {0}", database.GetImageQueueSize());
                 Thread.Sleep(3000);
             }
 
@@ -71,9 +71,9 @@ namespace picmag
 
             databaseTask.Wait();
 
-            log.PrintDebug(tag, "Main: files found in source path " + imageFinder.TotalFilesCount);
-            log.PrintDebug(tag, "Main: files inserted to database and copied to target path " + database.InsertedImageCount);
-            log.PrintError(tag, "Main: files already existing on target path and not imported " + database.AlreadyImportedFileCounter);
+            log.PrintDebug(tag, "files found in source path " + imageFinder.TotalFilesCount);
+            log.PrintDebug(tag, "files inserted to database and copied to target path " + database.InsertedImageCount);
+            log.PrintError(tag, "files already existing on target path and not imported " + database.AlreadyImportedFileCounter);
         }
 
         void Start(string []args)
@@ -88,8 +88,8 @@ namespace picmag
             {
                 if (args.Length == 3)
                 {
-                    log.PrintDebug(tag, "Main: database filepath: " + args[1]);
-                    log.PrintDebug(tag, "Main: Result filepath: " + args[2]);
+                    log.PrintDebug(tag, "database filepath: " + args[1]);
+                    log.PrintDebug(tag, "Result filepath: " + args[2]);
                     HandleFindDuplicates(args[1], args[2]);
                 }
                 else
@@ -108,9 +108,9 @@ namespace picmag
                         utils.CreateDirectoryPath(databaseFullpath);
                         HandleCreateDatabase(databaseFullpath);
                     }
-                    log.PrintDebug(tag, "Main: Database filepath: {0}", databaseFullpath);
-                    log.PrintDebug(tag, "Main: Image source path: {0}", args[1]);
-                    log.PrintDebug(tag, "Main: Image destination path: {0}", args[2]);
+                    log.PrintDebug(tag, "Database filepath: {0}", databaseFullpath);
+                    log.PrintDebug(tag, "Image source path: {0}", args[1]);
+                    log.PrintDebug(tag, "Image destination path: {0}", args[2]);
                     HandleImportImages(databaseFullpath, args[1], args[2]);
                 }
                 else
