@@ -19,6 +19,7 @@ namespace picmag
         private ILog log;
         private const String tag = "Data";
         public int InsertedImageCount { get; private set; }
+        public int AlreadyImportedFileCounter { get; private set; }
         public ImagesTable Images { get; private set; }
         public Database(string importDestinationPath, string databaseFilepath, CancellationTokenSource cts, ILog log)
         {
@@ -152,6 +153,7 @@ namespace picmag
                         {
                             canCopy = false;
                             log.PrintDebug(tag, "file {0} already exists on target path {1}", item.Name, targetPath);
+                            AlreadyImportedFileCounter ++;
                         }
 
                         // transaction block
