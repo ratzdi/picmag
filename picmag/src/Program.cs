@@ -22,7 +22,7 @@ namespace picmag
             var executingAssembly = System.Reflection.Assembly.GetExecutingAssembly();
             var fileVersionInfo = FileVersionInfo.GetVersionInfo(executingAssembly .Location);
             Console.WriteLine("Usage of {0} v{1}:", fileVersionInfo.ProductName, fileVersionInfo.FileVersion);
-            Console.WriteLine("\t-d <DB filepath> <output filepath> - Find duplicates and write results to file.");
+            // Console.WriteLine("\t-d <DB filepath> <output filepath> - Find duplicates and write results to file");
             Console.WriteLine("\t-i <source path> <target path> - Import images");
             Console.WriteLine("\t-h help");
         }
