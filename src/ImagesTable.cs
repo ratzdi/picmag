@@ -109,8 +109,7 @@ public class ImagesTable
                     {
                         if (row.Value == tmp.Value)
                         {
-                            log.PrintDebug(tag, "Duplicate found for " + row.Key);
-                            log.PrintDebug(tag, "Duplicate: " + tmp.Key);
+                            log.PrintDebug(tag, "Duplicate found for " + row.Key + " in " + tmp.Key);
                             duplicateList.Add(tmp.Key);
                         }
                     }

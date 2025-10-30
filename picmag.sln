@@ -1,34 +1,24 @@
-﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.26124.0
-MinimumVisualStudioVersion = 15.0.26124.0
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "picmag", "picmag\picmag.csproj", "{6B4004C4-F233-4A53-AA69-A3A1DF501A17}"
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "picmag", "picmag.csproj", "{6A88B940-4515-C210-0CCC-27F2A80881AD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
-		Debug|x64 = Debug|x64
-		Debug|x86 = Debug|x86
 		Release|Any CPU = Release|Any CPU
-		Release|x64 = Release|x64
-		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6A88B940-4515-C210-0CCC-27F2A80881AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6A88B940-4515-C210-0CCC-27F2A80881AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6A88B940-4515-C210-0CCC-27F2A80881AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6A88B940-4515-C210-0CCC-27F2A80881AD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
-	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Debug|x64.Build.0 = Debug|Any CPU
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Debug|x86.Build.0 = Debug|Any CPU
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Release|Any CPU.Build.0 = Release|Any CPU
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Release|x64.ActiveCfg = Release|Any CPU
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Release|x64.Build.0 = Release|Any CPU
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Release|x86.ActiveCfg = Release|Any CPU
-		{6B4004C4-F233-4A53-AA69-A3A1DF501A17}.Release|x86.Build.0 = Release|Any CPU
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {29739F89-BDA4-4C17-9EF1-6729A82D81FB}
 	EndGlobalSection
 EndGlobal

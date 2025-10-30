@@ -1,3 +1,4 @@
 # Output directories
 bin
 obj
+tests/out
