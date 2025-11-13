@@ -5,6 +5,7 @@ Helps to manage your picture collection.
 ### Dependencies
 - libsqlite3-dev
 - dotnetcore 8.0
+- sqlite3
 
 ### Build
 ```

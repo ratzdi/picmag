@@ -1,3 +1,3 @@
-## Test scenarion with no valid media files.
+## Test with invalid media files
 
 The resulting database must not contain any entries.

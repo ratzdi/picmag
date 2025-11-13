@@ -1,1 +1,1 @@
-## Test scenarion with only JPG files
+## Tests with JPG files
