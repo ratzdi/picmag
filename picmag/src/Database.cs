@@ -18,10 +18,12 @@ namespace picmag
         private DateTime session_timestamp;
         private ILog log;
         private const String tag = "Data";
-        public int InsertedImageCount { get; private set; }
+        private List<string> extensions;
+        private MD5Cache md5Cache;
+        public uint InsertedImageCount { get; private set; }
         public int AlreadyImportedFileCounter { get; private set; }
         public ImagesTable Images { get; private set; }
-        public Database(string importDestinationPath, string databaseFilepath, CancellationTokenSource cts, ILog log)
+        public Database(string importDestinationPath, string databaseFilepath, CancellationTokenSource cts, ILog log, List<string> extensions, MD5Cache cache)
         {
             cancellationTokenSource = cts;
             sqliteConnection = new SqliteConnection(databaseFilepath);
@@ -30,6 +32,8 @@ namespace picmag
             this.importDestinationPath = importDestinationPath;
             session_timestamp = DateTime.Now;
             this.log = log;
+            this.extensions = extensions;
+            md5Cache = cache;
         }
         ~Database()
         {
@@ -59,146 +63,8 @@ namespace picmag
                 {
                     try
                     {
-                        log.PrintDebug(tag, "{0}", item.Name);
-
-                        byte[] md5 = null;
-                        string targetPath = string.Empty;
-                        DateTime creationTime;
-                        string fileName = string.Empty;
-
-                        switch (item.Extension.ToLower())
-                        {
-                            case ".jpg":
-                            case ".jpeg":
-                                string dirPath = string.Empty;
-                                ExifLib.JpegInfo jpegInfo = null;
-                                try
-                                {
-                                    jpegInfo = ExifLib.ExifReader.ReadJpeg(item);
-                                }
-                                catch (Exception ex)
-                                {
-                                    log.PrintError(tag, ex.Message);
-                                    log.PrintError(tag, ex.StackTrace);
-                                }
-
-                                if (jpegInfo != null && jpegInfo.MD5 != null)
-                                    md5 = jpegInfo.MD5;
-                                else
-                                    md5 = utils.GetMd5(item.FullName);
-
-                                if (jpegInfo != null)
-                                {
-                                    fileName = jpegInfo.FileName;
-
-                                    try
-                                    {
-                                        dirPath = utils.CreateDirectoryPathFrom(jpegInfo.DateTime);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        log.PrintError(tag, ex.Message);
-                                        log.PrintError(tag, ex.StackTrace);
-                                        dirPath = utils.CreateDirectoryPathFrom(item.CreationTime);
-                                    }
-
-                                    try
-                                    {
-                                        creationTime = utils.ToDateTime(jpegInfo.DateTime);
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        creationTime = item.CreationTime;
-                                        log.PrintError(tag, ex.Message);
-                                        log.PrintError(tag, ex.StackTrace);
-                                    }
-                                }
-                                else
-                                {
-                                    dirPath = utils.CreateDirectoryPathFrom(item.CreationTime);
-                                    creationTime = item.CreationTime;
-                                }
-
-                                targetPath = Path.Combine(dirPath, fileName);
-
-                                break;
-                            default:
-                                log.PrintDebug(tag, "calculate MD5");
-                                md5 = utils.GetMd5(item.FullName);
-                                targetPath = utils.CreateDirectoryPathFrom(item.CreationTime);
-                                targetPath = Path.Combine(targetPath, item.Name);
-                                creationTime = item.CreationTime;
-                                break;
-                        }
-
-                        bool canInsert = false;
-                        bool canCopy = false;
-
-                        if (!Images.ImageExists(targetPath, md5))
-                        {
-                            canInsert = true;
-                        }
-                        else
-                        {
-                            // duplicateList.Add(item.FullName);
-                            log.PrintDebug(tag, item.FullName + " already in database.");
-                            canInsert = false;
-                        }
-
-                        if (System.IO.File.Exists(Path.Combine(this.importDestinationPath, targetPath)) == false)
-                        {
-                            canCopy = true;
-                        }
-                        else
-                        {
-                            canCopy = false;
-                            log.PrintDebug(tag, "file {0} already exists on target path {1}", item.Name, targetPath);
-                            AlreadyImportedFileCounter ++;
-                        }
-
-                        // transaction block
-                        bool fileInserted = false;
-                        bool fileCopied = false; ;
-
-                        if (canCopy && canInsert)
-                        {
-                            try
-                            {
-                                // copy file
-                                log.PrintDebug(tag, "{0} copy file to target path", item.Name);
-                                var fullDestinationFilePath = Path.Combine(this.importDestinationPath, targetPath);
-                                utils.CopyFile(item.FullName, fullDestinationFilePath);
-                                log.PrintDebug(tag, "{0} copied to {1}", item.Name, targetPath);
-                                fileCopied = true;
-                            }
-                            catch (Exception ex)
-                            {
-                                // TODO: undo insert
-                                fileCopied = false;
-                                log.PrintError(tag, ex.Message);
-                                log.PrintError(tag, ex.StackTrace);
-                            }
-                            if (fileCopied)
-                            {
-                                try
-                                {
-                                    // insert db
-                                    log.PrintDebug(tag, "{0} not in Database", item.Name);
-                                    Images.Insert(targetPath, creationTime, md5);
-                                    log.PrintDebug(tag, "{0} not in Database", item.Name);
-                                    fileInserted = true;
-                                }
-                                catch (Exception ex)
-                                {
-                                    fileInserted = false;
-                                    utils.RemoveFile(Path.Combine(this.importDestinationPath, targetPath));
-                                    log.PrintError(tag, ex.StackTrace);
-                                }
-                            }
-
-                            if (fileInserted && fileCopied)
-                                InsertedImageCount++;
-                        }
+                        OnJpegExtension(item, utils);
+                        OnMp4Extension(item, utils);
                     }
                     catch (Exception ex)
                     {
@@ -211,6 +77,164 @@ namespace picmag
                     Thread.Sleep(10);
                 }
             }
+        }
+        private void CopyAndInsertFile(FileInfo item, Utils utils, string md5, string targetPath, DateTime creationTime)
+        {
+            bool canInsert;
+            if (!Images.ImageExists(targetPath, md5))
+            {
+                canInsert = true;
+            }
+            else
+            {
+                // duplicateList.Add(item.FullName);
+                log.PrintDebug(tag, "Already in DB: " + item.FullName);
+                canInsert = false;
+            }
+
+            bool canCopy;
+            if (System.IO.File.Exists(Path.Combine(this.importDestinationPath, targetPath)) == false)
+            {
+                canCopy = true;
+            }
+            else
+            {
+                canCopy = false;
+                log.PrintDebug(tag, "File " + item.Name + " already exists in " + targetPath);
+                AlreadyImportedFileCounter++;
+            }
+
+            // transaction block
+            bool fileInserted = false;
+            bool fileCopied = false; ;
+
+            if (canCopy && canInsert)
+            {
+                try
+                {
+                    // copy file
+                    var fullDestinationFilePath = Path.Combine(this.importDestinationPath, targetPath);
+                    utils.CopyFile(item.FullName, fullDestinationFilePath);
+                    log.PrintDebug(tag, "Copied: {0} to {1}", item.Name, targetPath);
+                    fileCopied = true;
+                }
+                catch (Exception ex)
+                {
+                    // TODO: undo insert
+                    fileCopied = false;
+                    log.PrintError(tag, ex.Message);
+                    log.PrintError(tag, ex.StackTrace);
+                }
+                if (fileCopied)
+                {
+                    try
+                    {
+                        // insert db
+                        Images.Insert(targetPath, creationTime, md5);
+                        fileInserted = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        fileInserted = false;
+                        utils.RemoveFile(Path.Combine(this.importDestinationPath, targetPath));
+                        log.PrintError(tag, ex.StackTrace);
+                    }
+                }
+
+                if (fileInserted && fileCopied)
+                {
+                    md5Cache.TryAdd(item.FullName, md5);
+                    log.PrintInfo(tag, "Imported: {0} to {1}", item.Name, targetPath);
+                    InsertedImageCount++;
+                }
+            }
+        }
+
+        private bool OnJpegExtension(FileInfo item, Utils utils)
+        {
+            if ((item.Extension.ToLower().Trim('.').Equals("jpeg") || item.Extension.ToLower().Trim('.').Equals("jpg")) && extensions.Contains(item.Extension.ToLower().Trim('.')))
+            {
+                string md5 = string.Empty;
+
+                if (md5Cache.TryGetValue(item.FullName, out md5))
+                {
+                    return false;
+                }
+
+                DateTime creationTime;
+                var fileName = string.Empty;
+                ExifLib.JpegInfo jpegInfo = null;
+
+                try
+                {
+                    jpegInfo = ExifLib.ExifReader.ReadJpeg(item);
+                }
+                catch (Exception ex)
+                {
+                    log.PrintError(tag, ex.Message);
+                    log.PrintError(tag, ex.StackTrace);
+                }
+
+                if (jpegInfo != null && jpegInfo.MD5 != null)
+                {
+                    md5 = BitConverter.ToString(jpegInfo.MD5);
+                }
+                else
+                {
+                    // try to get the md5 from local application cache
+                    md5 = BitConverter.ToString(utils.GetMd5(item.FullName));
+                }
+
+                string dirPath;
+                if (jpegInfo != null)
+                {
+                    fileName = jpegInfo.FileName;
+
+                    try
+                    {
+                        dirPath = utils.CreateDirectoryPathFrom(jpegInfo.DateTime);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.PrintError(tag, ex.Message);
+                        log.PrintError(tag, ex.StackTrace);
+                        dirPath = utils.CreateDirectoryPathFrom(item.CreationTime);
+                    }
+
+                    try
+                    {
+                        creationTime = utils.ToDateTime(jpegInfo.DateTime);
+                    }
+                    catch (Exception ex)
+                    {
+                        creationTime = item.CreationTime;
+                        log.PrintError(tag, ex.Message);
+                        log.PrintError(tag, ex.StackTrace);
+                    }
+                }
+                else
+                {
+                    dirPath = utils.CreateDirectoryPathFrom(item.CreationTime);
+                    creationTime = item.CreationTime;
+                }
+
+                string targetPath = Path.Combine(dirPath, fileName);
+                CopyAndInsertFile(item, utils, md5, targetPath, creationTime);
+
+                return true;
+            }
+            return false;
+        }
+        private bool OnMp4Extension(FileInfo item, Utils utils)
+        {
+            if (item.Extension.ToLower().Trim('.').Equals("mp4") && extensions.Contains(item.Extension.ToLower().Trim('.')))
+            {
+                var md5 = BitConverter.ToString(utils.GetMd5(item.FullName));
+                var targetPath = Path.Combine(utils.CreateDirectoryPathFrom(item.CreationTime), item.Name);
+                CopyAndInsertFile(item, utils, md5, targetPath, item.CreationTime);
+                return true;
+            }
+            return false;
         }
     }
 }

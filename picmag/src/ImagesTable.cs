@@ -28,7 +28,7 @@ public class ImagesTable
             command.CommandText = createString;
             return command.ExecuteNonQuery();
         }
-        public void Insert(string path, DateTime created, byte[] md5)
+        public void Insert(string path, DateTime created, string md5)
         {
             IDbCommand dbcmd = sqliteConnection.CreateCommand();
             // todo: try insert or ignore into images ...
@@ -43,11 +43,11 @@ public class ImagesTable
             unix = new DateTimeOffset(created);
             param = new SqliteParameter("created", unix.ToUnixTimeSeconds());
             dbcmd.Parameters.Add(param);
-            param = new SqliteParameter("md5", BitConverter.ToString(md5));
+            param = new SqliteParameter("md5", md5);
             dbcmd.Parameters.Add(param);
             if (dbcmd.ExecuteNonQuery() > 0)
             {
-                log.PrintDebug(tag, "Database: new image inserted for " + path);
+                log.PrintDebug(tag, "Image inserted: " + path);
             }
         }
         public void Update(string path, DateTime created, byte[] md5)
@@ -68,7 +68,7 @@ public class ImagesTable
             dbcmd.Parameters.Add(param);
             if (dbcmd.ExecuteNonQuery() > 0)
             {
-                log.PrintDebug(tag, "Database: image updated for " + path);
+                log.PrintDebug(tag, "Image updated: " + path);
             }
         }
         public bool FindDuplicate(string imageFullPath5)
@@ -109,8 +109,7 @@ public class ImagesTable
                     {
                         if (row.Value == tmp.Value)
                         {
-                            log.PrintDebug(tag, "Duplicate found for " + row.Key);
-                            log.PrintDebug(tag, "Duplicate: " + tmp.Key);
+                            log.PrintDebug(tag, "Duplicate found for " + row.Key + " in " + tmp.Key);
                             duplicateList.Add(tmp.Key);
                         }
                     }
@@ -119,12 +118,11 @@ public class ImagesTable
             return duplicateList.Count;
         }
 
-        public bool ImageExists(string path, byte[] md5)
+        public bool ImageExists(string path, string md5)
         {
             bool result = false;
             var dbcmd = sqliteConnection.CreateCommand();
-            var md5AsString = BitConverter.ToString(md5);
-            dbcmd.CommandText = "select * from images where md5 = '" + md5AsString + "' AND path ='" + path + "';";
+            dbcmd.CommandText = "select * from images where md5 = '" + md5 + "' AND path ='" + path + "';";
             dbcmd.CommandType = CommandType.Text;
             var reader = dbcmd.ExecuteReader();
             if (reader.Read())

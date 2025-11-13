@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,41 +17,42 @@ namespace picmag
         {
             this.log = log;
         }
-        
+
         void PrintUsage()
         {
             var executingAssembly = System.Reflection.Assembly.GetExecutingAssembly();
-            var fileVersionInfo = FileVersionInfo.GetVersionInfo(executingAssembly .Location);
+            var fileVersionInfo = FileVersionInfo.GetVersionInfo(executingAssembly.Location);
             Console.WriteLine("Usage of {0} v{1}:", fileVersionInfo.ProductName, fileVersionInfo.FileVersion);
-            // Console.WriteLine("\t-d <DB filepath> <output filepath> - Find duplicates and write results to file");
-            Console.WriteLine("\t-i <source path> <target path> - Import images");
+            Console.WriteLine("\t-d <DB filepath> <output filepath> - Find duplicates and write results to a file and to the std output.");
+            Console.WriteLine("\t-i <source path> <target path> - Import images of type JPG");
             Console.WriteLine("\t-h help");
         }
 
         void HandleFindDuplicates(string dbFilepath, string resultFilepath)
         {
             var databaseTaskCancellationTokenSource = new CancellationTokenSource();
-            var database = new Database(null, "URI=file:" + dbFilepath, databaseTaskCancellationTokenSource, log);
+            var database = new Database(null, "URI=file:" + dbFilepath, databaseTaskCancellationTokenSource, log, null, null);
             var count = database.Images.FindDuplicates();
-            log.PrintInfo(tag, "Find Duplicates: number of duplicates " + count);
+            log.PrintDebug(tag, "number of duplicates " + count);
         }
 
         void HandleCreateDatabase(string dbFilepath)
         {
             var databaseTaskCancellationTokenSource = new CancellationTokenSource();
-            var database = new Database(null, "URI=file:" + dbFilepath, databaseTaskCancellationTokenSource, log);
+            var database = new Database(null, "URI=file:" + dbFilepath, databaseTaskCancellationTokenSource, log, null, null);
             var imagesTable = database.Images;
             imagesTable.Create();
-            log.PrintInfo(tag, "create Database: Sqlite database created.");
+            log.PrintDebug(tag, "Sqlite database created.");
         }
 
-        void HandleImportImages(string databasePath, string sourcePath, string destinationPath)
+        void HandleImportImages(string databasePath, string sourcePath, string destinationPath, List<string> extensions)
         {
+            DateTime t1 = DateTime.Now;
             Task importTask, databaseTask;
             var importTaskCancellationTokenSource = new CancellationTokenSource();
             var databaseTaskCancellationTokenSource = new CancellationTokenSource();
-
-            var database = new Database(destinationPath, "URI=file:" + databasePath, databaseTaskCancellationTokenSource, log);
+            var md5Cache = new MD5Cache(System.IO.Path.Combine(destinationPath, ".picmag", "cache.txt"), log);
+            var database = new Database(destinationPath, "URI=file:" + databasePath, databaseTaskCancellationTokenSource, log, extensions, md5Cache);
 
             databaseTask = new Task(new Action(database.StartReceiving), databaseTaskCancellationTokenSource.Token);
             databaseTask.Start();
@@ -63,7 +65,7 @@ namespace picmag
             importTask.Wait();
             while (database.GetImageQueueSize() > 0)
             {
-                log.PrintInfo(tag, "wait for Database: {0}", database.GetImageQueueSize());
+                log.PrintDebug(tag, "DB task buzy with images: {0}", database.GetImageQueueSize());
                 Thread.Sleep(3000);
             }
 
@@ -71,14 +73,16 @@ namespace picmag
 
             databaseTask.Wait();
 
-            log.PrintInfo(tag, "files found in source path " + imageFinder.TotalFilesCount);
-            log.PrintInfo(tag, "files inserted to database and copied to target path " + database.InsertedImageCount);
-            log.PrintInfo(tag, "files already existing on target path and not imported " + database.AlreadyImportedFileCounter);
+            var importDuration = (DateTime.Now - t1);
+
+            log.PrintDebug(tag, "Files found in source path: " + imageFinder.TotalFilesCount);
+            log.PrintDebug(tag, "Files imported: " + database.InsertedImageCount);
+            log.PrintDebug(tag, "Process took: " + importDuration.ToString());
         }
 
-        void Start(string []args)
+        void Start(string[] args)
         {
-            if(args.Length == 0 || args[0] == "-h")
+            if (args.Length == 0 || args[0] == "-h")
             {
                 PrintUsage();
                 return;
@@ -88,8 +92,8 @@ namespace picmag
             {
                 if (args.Length == 3)
                 {
-                    log.PrintInfo(tag, "database filepath: " + args[1]);
-                    log.PrintInfo(tag, "Result filepath: " + args[2]);
+                    log.PrintDebug(tag, "DB filepath: " + args[1]);
+                    log.PrintDebug(tag, "Target directory: " + args[2]);
                     HandleFindDuplicates(args[1], args[2]);
                 }
                 else
@@ -108,10 +112,26 @@ namespace picmag
                         utils.CreateDirectoryPath(databaseFullpath);
                         HandleCreateDatabase(databaseFullpath);
                     }
-                    log.PrintInfo(tag, "Database filepath: {0}", databaseFullpath);
-                    log.PrintInfo(tag, "Image source path: {0}", args[1]);
-                    log.PrintInfo(tag, "Image destination path: {0}", args[2]);
-                    HandleImportImages(databaseFullpath, args[1], args[2]);
+                    log.PrintDebug(tag, "DB filepath: {0}", databaseFullpath);
+                    log.PrintDebug(tag, "Source path: {0}", args[1]);
+                    log.PrintDebug(tag, "Target path: {0}", args[2]);
+                    List<string> extensions = new List<string> { "jpg" };
+                    HandleImportImages(databaseFullpath, args[1], args[2], extensions);
+                }
+                else if(args.Length == 4)
+                {
+                    var databaseFullpath = System.IO.Path.Combine(args[2], relDatabaseFilepath);
+                    if (!System.IO.File.Exists(databaseFullpath))
+                    {
+                        var utils = new Utils();
+                        utils.CreateDirectoryPath(databaseFullpath);
+                        HandleCreateDatabase(databaseFullpath);
+                    }
+                    log.PrintDebug(tag, "DB filepath: {0}", databaseFullpath);
+                    log.PrintDebug(tag, "Source path: {0}", args[1]);
+                    log.PrintDebug(tag, "Target path: {0}", args[2]);
+                    List<string> extensions = new List<string>(args[3].Split(','));
+                    HandleImportImages(databaseFullpath, args[1], args[2], extensions);
                 }
                 else
                 {
@@ -124,7 +144,7 @@ namespace picmag
         {
             new Program(new FileLog(
                 System.IO.Path.Combine(
-                    System.Environment.CurrentDirectory, 
+                    System.Environment.CurrentDirectory,
                     programName + ".log"))).Start(args);
         }
     }

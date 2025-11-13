@@ -1,3 +1,4 @@
 # Output directories
 bin
 obj
+picmag/tests/out
