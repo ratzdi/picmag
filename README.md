@@ -1,11 +1,25 @@
-## picmag - the Picture manager application
+## picmag - the picture manager application
 
 Helps to manage your picture collection.
+
+
+### Check it out!
+
+If you have some unordered borried collection of images located on your storage, this
+tool can help you to give your images a tidy structure. Imagine you have a collection of pictures that is growing up year on year.
+picmag analyses your collection and creates a clear chronological directory structure for all pictures in your collection.
+
+```
+# Import all JPG pictures from /home/user/some/borried/collection to /home/user/picture_album
+
+./picmag -i /home/user/some/borried/collection /home/user/picture_album
+
+# After import all files in source directory ramain untouched.
+```
 
 ### Dependencies
 - libsqlite3-dev
 - dotnetcore 8.0
-- sqlite3
 
 ### Build
 ```
@@ -17,12 +31,12 @@ dotnet build
 ./picmag -h
 ```
 
-### Test 
+### Test
 ```
 ./picmag/tests/integration_test.sh
 ```
 
-### Debian Package 
+### Debian Package
 
 Install initially the dotnet-deb tool.
 ```
@@ -35,3 +49,8 @@ Build the package
 ```
 dotnet deb
 ```
+
+### Next Features
+
+- Option to delete successfully imported file from the source directory.
+- Import video files in mp4 format.
