@@ -54,3 +54,10 @@ dotnet deb
 
 - Option to delete successfully imported file from the source directory.
 - Import video files in mp4 format.
+- Summerizes result of the import as log file:
+  - Number of imported files
+  - List of imported files
+  - Number of not imported files
+  - List of not imported files
+- Sanity checks
+  - sync the database with filesystem, i.e. if an DB entry does not exist on filesystem, the entry must be removed and vice-versa.
