@@ -32,6 +32,10 @@ picmag analyses your collection and creates a clear chronological directory stru
 - libsqlite3-dev
 - dotnetcore 8.0
 
+### Versioning
+
+See [VERSIONING.md](VERSIONING.md) for the Semantic Versioning policy and release process.
+
 ### Build
 ```
 dotnet build
@@ -40,6 +44,7 @@ dotnet build
 ### Run
 ```
 ./picmag -h
+./picmag --version
 ```
 
 ### Test
