@@ -56,7 +56,7 @@ namespace unittests
             }
 
             // Act
-            var cache = new MD5Cache(tempCacheFile, mockLog);
+            using var cache = new MD5Cache(tempCacheFile, mockLog);
 
             // Assert
             Assert.IsTrue(File.Exists(tempCacheFile));
@@ -66,7 +66,7 @@ namespace unittests
         public void TryAdd_NewKey_ReturnsTrue()
         {
             // Arrange
-            var cache = new MD5Cache(tempCacheFile, mockLog);
+            using var cache = new MD5Cache(tempCacheFile, mockLog);
             
             // Act
             bool result = cache.TryAdd("testKey", "testValue");
@@ -82,7 +82,7 @@ namespace unittests
         public void TryAdd_DuplicateKey_ReturnsFalse()
         {
             // Arrange
-            var cache = new MD5Cache(tempCacheFile, mockLog);
+            using var cache = new MD5Cache(tempCacheFile, mockLog);
             cache.TryAdd("testKey", "testValue1");
 
             // Act
@@ -99,7 +99,7 @@ namespace unittests
         public void TryGetValue_ExistingKey_ReturnsTrue()
         {
             // Arrange
-            var cache = new MD5Cache(tempCacheFile, mockLog);
+            using var cache = new MD5Cache(tempCacheFile, mockLog);
             cache.TryAdd("testKey", "testValue");
 
             // Act
@@ -115,7 +115,7 @@ namespace unittests
         public void TryGetValue_NonExistentKey_ReturnsFalse()
         {
             // Arrange
-            var cache = new MD5Cache(tempCacheFile, mockLog);
+            using var cache = new MD5Cache(tempCacheFile, mockLog);
 
             // Act
             string value;
@@ -133,7 +133,7 @@ namespace unittests
             File.WriteAllText(tempCacheFile, "key1 value1\nkey2 value2");
             
             // Act
-            var cache = new MD5Cache(tempCacheFile, mockLog);
+            using var cache = new MD5Cache(tempCacheFile, mockLog);
 
             // Assert
             string value1, value2;
@@ -141,6 +141,30 @@ namespace unittests
             Assert.IsTrue(cache.TryGetValue("key2", out value2));
             Assert.AreEqual("value1", value1);
             Assert.AreEqual("value2", value2);
+        }
+
+        [TestMethod]
+        public void TryAdd_KeyWithSpaces_PersistsAndLoads()
+        {
+            // Arrange
+            string keyWithSpaces = "/tmp/some folder/video sample.mp4";
+            string md5Value = "AA-BB-CC";
+
+            // Act
+            using (var cache = new MD5Cache(tempCacheFile, mockLog))
+            {
+                bool added = cache.TryAdd(keyWithSpaces, md5Value);
+                Assert.IsTrue(added);
+            }
+
+            // Assert
+            using (var reloaded = new MD5Cache(tempCacheFile, mockLog))
+            {
+                string value;
+                bool found = reloaded.TryGetValue(keyWithSpaces, out value);
+                Assert.IsTrue(found);
+                Assert.AreEqual(md5Value, value);
+            }
         }
     }
 

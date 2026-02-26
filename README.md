@@ -10,7 +10,7 @@ tool can help you to give your images a tidy structure. Imagine you have a colle
 picmag analyses your collection and creates a clear chronological directory structure for all pictures in your collection.
 
 ```
-# Import all JPG pictures from /home/user/some/borried/collection to /home/user/picture_album
+# Import all JPG and MP4 files from /home/user/some/borried/collection to /home/user/picture_album
 
 ./picmag -i /home/user/some/borried/collection /home/user/picture_album
 
@@ -31,6 +31,7 @@ picmag analyses your collection and creates a clear chronological directory stru
 ### Dependencies
 - libsqlite3-dev
 - dotnetcore 8.0
+- ffprobe (optional, for MP4 metadata timestamp extraction)
 
 ### Versioning
 
@@ -69,7 +70,7 @@ dotnet deb
 ### Next Features
 
 - [x] Option to delete successfully imported file from the source directory (`--delete-source`).
-- Import video files in mp4 format.
+- [x] Import video files in mp4 format.
 - Summerizes result of the import as log file:
   - Number of imported files
   - List of imported files
