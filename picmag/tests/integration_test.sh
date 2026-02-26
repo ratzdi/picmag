@@ -46,6 +46,13 @@ rm -rf ./out/1
 ../bin/Debug/netcoreapp8.0/picmag -i ./in/1 ./out/1
 compare_db_with_ref ./out/1/.picmag/database.sqlite ./in/1/database_ref.sql ./out/1/.picmag
 
+summary_file=$(find ./out/1/.picmag -maxdepth 1 -type f -name 'import-summary-*.log' | head -n1)
+test -n "$summary_file"
+grep -q "Number of imported files: 10" "$summary_file"
+grep -q "Number of not imported files: 2" "$summary_file"
+grep -q "46173826831_f8dddb93d6_o.jpg" "$summary_file"
+grep -q "database_ref.sql" "$summary_file"
+
 # Ingegration Test 2
 
 rm -rf ./out/2

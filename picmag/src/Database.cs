@@ -28,7 +28,11 @@ namespace picmag
         public int AlreadyImportedFileCounter { get; private set; }
         public uint DeletedSourceFileCount { get; private set; }
         public uint DeleteSourceFailedCount { get; private set; }
+        public IReadOnlyList<string> ImportedFiles => importedFiles.AsReadOnly();
+        public IReadOnlyList<string> NotImportedFiles => notImportedFiles.AsReadOnly();
         public ImagesTable Images { get; private set; }
+        private readonly List<string> importedFiles = new List<string>();
+        private readonly List<string> notImportedFiles = new List<string>();
         public Database(string importDestinationPath, string databaseFilepath, CancellationTokenSource cts, ILog log, List<string> extensions, MD5Cache cache, bool deleteSourceAfterImport = false)
         {
             cancellationTokenSource = cts;
@@ -70,11 +74,29 @@ namespace picmag
                 {
                     try
                     {
-                        OnJpegExtension(item, utils);
-                        OnMp4Extension(item, utils);
+                        var extension = item.Extension.ToLower().Trim('.');
+                        bool imported;
+
+                        if ((extension.Equals("jpeg") || extension.Equals("jpg")) && extensions.Contains(extension))
+                        {
+                            imported = OnJpegExtension(item, utils);
+                            if (!imported)
+                                AddNotImported(item.FullName, "already imported or cache hit");
+                        }
+                        else if (extension.Equals("mp4") && extensions.Contains(extension))
+                        {
+                            imported = OnMp4Extension(item, utils);
+                            if (!imported)
+                                AddNotImported(item.FullName, "already imported or cache hit");
+                        }
+                        else
+                        {
+                            AddNotImported(item.FullName, "unsupported extension");
+                        }
                     }
                     catch (Exception ex)
                     {
+                        AddNotImported(item.FullName, "processing error");
                         log.PrintError(tag, ex.Message);
                         log.PrintError(tag, ex.StackTrace);
                     }
@@ -85,7 +107,7 @@ namespace picmag
                 }
             }
         }
-        private void CopyAndInsertFile(FileInfo item, Utils utils, string md5, string targetPath, DateTime creationTime)
+        private bool CopyAndInsertFile(FileInfo item, Utils utils, string md5, string targetPath, DateTime creationTime)
         {
             bool canInsert;
             if (!Images.ImageExists(targetPath, md5))
@@ -110,6 +132,9 @@ namespace picmag
                 log.PrintDebug(tag, "File " + item.Name + " already exists in " + targetPath);
                 AlreadyImportedFileCounter++;
             }
+
+            if (!canInsert || !canCopy)
+                return false;
 
             // transaction block
             bool fileInserted = false;
@@ -153,6 +178,7 @@ namespace picmag
                     md5Cache.TryAdd(item.FullName, md5);
                     log.PrintInfo(tag, "Imported: {0} to {1}", item.Name, targetPath);
                     InsertedImageCount++;
+                    AddImported(item.FullName, targetPath);
 
                     if (deleteSourceAfterImport)
                     {
@@ -170,8 +196,12 @@ namespace picmag
                             log.PrintError(tag, ex.StackTrace);
                         }
                     }
+
+                    return true;
                 }
             }
+
+            return false;
         }
 
         private bool OnJpegExtension(FileInfo item, Utils utils)
@@ -245,9 +275,7 @@ namespace picmag
                 }
 
                 string targetPath = Path.Combine(dirPath, fileName);
-                CopyAndInsertFile(item, utils, md5, targetPath, creationTime);
-
-                return true;
+                return CopyAndInsertFile(item, utils, md5, targetPath, creationTime);
             }
             return false;
         }
@@ -270,10 +298,19 @@ namespace picmag
 
                 md5 = BitConverter.ToString(utils.GetMd5(item.FullName));
                 var targetPath = Path.Combine(utils.CreateDirectoryPathFrom(creationTime), item.Name);
-                CopyAndInsertFile(item, utils, md5, targetPath, creationTime);
-                return true;
+                return CopyAndInsertFile(item, utils, md5, targetPath, creationTime);
             }
             return false;
+        }
+
+        private void AddImported(string sourcePath, string targetPath)
+        {
+            importedFiles.Add(sourcePath + " -> " + targetPath);
+        }
+
+        private void AddNotImported(string sourcePath, string reason)
+        {
+            notImportedFiles.Add(sourcePath + " (" + reason + ")");
         }
 
         private bool TryGetMp4CreationTime(FileInfo item, out DateTime creationTime)

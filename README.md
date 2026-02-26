@@ -71,7 +71,7 @@ dotnet deb
 
 - [x] Option to delete successfully imported file from the source directory (`--delete-source`).
 - [x] Import video files in mp4 format.
-- Summerizes result of the import as log file:
+- [x] Summerizes result of the import as log file:
   - Number of imported files
   - List of imported files
   - Number of not imported files
