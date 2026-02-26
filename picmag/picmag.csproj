@@ -3,8 +3,11 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp8.0</TargetFramework>
     <RootNamespace>picmag</RootNamespace>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <Version>0.0.2</Version>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
+    <InformationalVersion>$(Version)</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Mono.Data.Sqlite" Version="1.0.61"/>

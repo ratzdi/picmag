@@ -23,6 +23,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -48,7 +50,85 @@ namespace picmag
             Console.WriteLine("\t-d <DB filepath> <output filepath> - Find duplicates and write results to a file and to the std output.");
             Console.WriteLine("\t-i <source path> <target path> [extensions] [--delete-source] - Import files (default extension: jpg)");
             Console.WriteLine("\t   Warning: --delete-source removes source files only after successful import.");
+            Console.WriteLine("\t--version, -v - Print application version and git short revision");
             Console.WriteLine("\t-h help");
+        }
+
+        string GetAppVersion()
+        {
+            var versionAttribute = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+            if (versionAttribute != null && !string.IsNullOrWhiteSpace(versionAttribute.InformationalVersion))
+            {
+                return versionAttribute.InformationalVersion.Split('+')[0];
+            }
+
+            var version = Assembly.GetExecutingAssembly().GetName().Version;
+            if (version == null)
+                return "unknown";
+
+            return $"{version.Major}.{version.Minor}.{version.Build}";
+        }
+
+        string FindGitRepositoryRoot()
+        {
+            var candidateStartPaths = new List<string> {
+                Environment.CurrentDirectory,
+                AppContext.BaseDirectory
+            };
+
+            foreach (var startPath in candidateStartPaths)
+            {
+                if (string.IsNullOrWhiteSpace(startPath))
+                    continue;
+
+                var directory = new DirectoryInfo(startPath);
+                while (directory != null)
+                {
+                    if (Directory.Exists(Path.Combine(directory.FullName, ".git")))
+                        return directory.FullName;
+                    directory = directory.Parent;
+                }
+            }
+
+            return null;
+        }
+
+        string GetGitShortRevision()
+        {
+            try
+            {
+                var repositoryRoot = FindGitRepositoryRoot();
+                if (string.IsNullOrWhiteSpace(repositoryRoot))
+                    return "unknown";
+
+                var process = new Process();
+                process.StartInfo.FileName = "git";
+                process.StartInfo.Arguments = "rev-parse --short HEAD";
+                process.StartInfo.WorkingDirectory = repositoryRoot;
+                process.StartInfo.RedirectStandardOutput = true;
+                process.StartInfo.RedirectStandardError = true;
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                    return output.Trim();
+            }
+            catch
+            {
+            }
+
+            return "unknown";
+        }
+
+        void PrintVersion()
+        {
+            var version = GetAppVersion();
+            var revision = GetGitShortRevision();
+            Console.WriteLine("{0} {1} ({2})", programName, version, revision);
         }
 
         void HandleFindDuplicates(string dbFilepath, string resultFilepath)
@@ -107,6 +187,12 @@ namespace picmag
 
         void Start(string[] args)
         {
+            if (args.Length == 1 && (args[0] == "--version" || args[0] == "-v"))
+            {
+                PrintVersion();
+                return;
+            }
+
             if (args.Length == 0 || args[0] == "-h")
             {
                 PrintUsage();
