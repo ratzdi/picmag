@@ -20,10 +20,13 @@ namespace picmag
         private const String tag = "Data";
         private List<string> extensions;
         private MD5Cache md5Cache;
+        private bool deleteSourceAfterImport;
         public uint InsertedImageCount { get; private set; }
         public int AlreadyImportedFileCounter { get; private set; }
+        public uint DeletedSourceFileCount { get; private set; }
+        public uint DeleteSourceFailedCount { get; private set; }
         public ImagesTable Images { get; private set; }
-        public Database(string importDestinationPath, string databaseFilepath, CancellationTokenSource cts, ILog log, List<string> extensions, MD5Cache cache)
+        public Database(string importDestinationPath, string databaseFilepath, CancellationTokenSource cts, ILog log, List<string> extensions, MD5Cache cache, bool deleteSourceAfterImport = false)
         {
             cancellationTokenSource = cts;
             sqliteConnection = new SqliteConnection(databaseFilepath);
@@ -34,6 +37,7 @@ namespace picmag
             this.log = log;
             this.extensions = extensions;
             md5Cache = cache;
+            this.deleteSourceAfterImport = deleteSourceAfterImport;
         }
         ~Database()
         {
@@ -146,6 +150,23 @@ namespace picmag
                     md5Cache.TryAdd(item.FullName, md5);
                     log.PrintInfo(tag, "Imported: {0} to {1}", item.Name, targetPath);
                     InsertedImageCount++;
+
+                    if (deleteSourceAfterImport)
+                    {
+                        try
+                        {
+                            utils.RemoveFile(item.FullName);
+                            log.PrintInfo(tag, "Deleted source file: {0}", item.FullName);
+                            DeletedSourceFileCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            DeleteSourceFailedCount++;
+                            log.PrintError(tag, "Failed to delete source file: {0}", item.FullName);
+                            log.PrintError(tag, ex.Message);
+                            log.PrintError(tag, ex.StackTrace);
+                        }
+                    }
                 }
             }
         }
@@ -196,6 +217,8 @@ namespace picmag
                     }
                     catch (Exception ex)
                     {
+                        log.PrintError(tag, "Timestamp of the image not valid or available: " + jpegInfo.FileName);
+                        log.PrintError(tag, "Try to use file creation time instead: " + item.FullName);
                         log.PrintError(tag, ex.Message);
                         log.PrintError(tag, ex.StackTrace);
                         dirPath = utils.CreateDirectoryPathFrom(item.CreationTime);
