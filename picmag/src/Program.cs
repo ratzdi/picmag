@@ -25,6 +25,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -183,6 +184,46 @@ namespace picmag
             log.PrintDebug(tag, "Source files deleted: " + database.DeletedSourceFileCount);
             log.PrintDebug(tag, "Source file delete failures: " + database.DeleteSourceFailedCount);
             log.PrintDebug(tag, "Process took: " + importDuration.ToString());
+
+            WriteImportSummary(destinationPath, imageFinder.TotalFilesCount, database, importDuration);
+        }
+
+        void WriteImportSummary(string destinationPath, uint totalFilesCount, Database database, TimeSpan duration)
+        {
+            try
+            {
+                var summaryDirectory = Path.Combine(destinationPath, ".picmag");
+                Directory.CreateDirectory(summaryDirectory);
+                var summaryFilePath = Path.Combine(summaryDirectory, $"import-summary-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+
+                var content = new StringBuilder();
+                content.AppendLine("Import Summary");
+                content.AppendLine($"Generated at: {DateTime.Now:O}");
+                content.AppendLine($"Number of scanned files: {totalFilesCount}");
+                content.AppendLine($"Number of imported files: {database.InsertedImageCount}");
+                content.AppendLine($"Number of not imported files: {database.NotImportedFiles.Count}");
+                content.AppendLine($"Process duration: {duration}");
+                content.AppendLine();
+                content.AppendLine("List of imported files:");
+                foreach (var importedFile in database.ImportedFiles)
+                {
+                    content.AppendLine(importedFile);
+                }
+
+                content.AppendLine();
+                content.AppendLine("List of not imported files:");
+                foreach (var notImportedFile in database.NotImportedFiles)
+                {
+                    content.AppendLine(notImportedFile);
+                }
+
+                File.WriteAllText(summaryFilePath, content.ToString());
+                log.PrintDebug(tag, "Import summary written to: {0}", summaryFilePath);
+            }
+            catch (Exception ex)
+            {
+                log.PrintError(tag, "Failed to write import summary: {0}", ex.Message);
+            }
         }
 
         void Start(string[] args)
