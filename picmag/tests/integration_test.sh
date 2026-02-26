@@ -24,18 +24,33 @@
 
 set -ex
 
+compare_db_with_ref()
+{
+	actual_db="$1"
+	ref_sql="$2"
+	work_dir="$3"
+
+	ref_db="$work_dir/reference.sqlite"
+	actual_rows="$work_dir/actual_rows.txt"
+	expected_rows="$work_dir/expected_rows.txt"
+
+	rm -f "$ref_db" "$actual_rows" "$expected_rows"
+	sqlite3 "$ref_db" < "$ref_sql"
+	sqlite3 "$actual_db" "select path, created, md5 from images order by path;" > "$actual_rows"
+	sqlite3 "$ref_db" "select path, created, md5 from images order by path;" > "$expected_rows"
+	diff "$expected_rows" "$actual_rows"
+}
+
 # Integration Test 1
 rm -rf ./out/1
 ../bin/Debug/netcoreapp8.0/picmag -i ./in/1 ./out/1
-sqlite3 ./out/1/.picmag/database.sqlite .dump > ./out/1/.picmag/database.sql
-diff ./in/1/database_ref.sql ./out/1/.picmag/database.sql
+compare_db_with_ref ./out/1/.picmag/database.sqlite ./in/1/database_ref.sql ./out/1/.picmag
 
 # Ingegration Test 2
 
 rm -rf ./out/2
 ../bin/Debug/netcoreapp8.0/picmag -i ./in/2 ./out/2
-sqlite3 ./out/2/.picmag/database.sqlite .dump > ./out/2/.picmag/database.sql
-diff ./in/2/database_ref.sql ./out/2/.picmag/database.sql
+compare_db_with_ref ./out/2/.picmag/database.sqlite ./in/2/database_ref.sql ./out/2/.picmag
 
 # Ingegration Test 3: delete imported source files
 
@@ -44,8 +59,7 @@ mkdir -p ./out/3
 cp -r ./in/1 ./out/3/source
 
 ../bin/Debug/netcoreapp8.0/picmag -i ./out/3/source ./out/3/target --delete-source
-sqlite3 ./out/3/target/.picmag/database.sqlite .dump > ./out/3/target/.picmag/database.sql
-diff ./in/1/database_ref.sql ./out/3/target/.picmag/database.sql
+compare_db_with_ref ./out/3/target/.picmag/database.sqlite ./in/1/database_ref.sql ./out/3/target/.picmag
 
 # all imported jpg files should be deleted from source directory
 if find ./out/3/source -type f -name '*.jpg' | grep -q .; then
@@ -64,8 +78,7 @@ mkdir -p ./out/4
 cp -r ./in/2 ./out/4/source
 
 ../bin/Debug/netcoreapp8.0/picmag -i ./out/4/source ./out/4/target --delete-source
-sqlite3 ./out/4/target/.picmag/database.sqlite .dump > ./out/4/target/.picmag/database.sql
-diff ./in/2/database_ref.sql ./out/4/target/.picmag/database.sql
+compare_db_with_ref ./out/4/target/.picmag/database.sqlite ./in/2/database_ref.sql ./out/4/target/.picmag
 
 # source files should remain untouched because nothing was imported
 test -f ./out/4/source/not_an_image
