@@ -21,19 +21,20 @@
 // SOFTWARE.
 
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
-using System.Linq;
-using System.Threading.Tasks.Dataflow;
+using System.Text;
 
 namespace picmag
 {
-    public class MD5Cache : IMD5Cache
+    public class MD5Cache : IMD5Cache, IDisposable
     {
         private readonly string cacheFilepath;
         private readonly ILog log;
-        private Dictionary<string, string> cache;
-        private StreamWriter fileStream;
+        private readonly ConcurrentDictionary<string, string> cache;
+        private readonly StreamWriter fileStream;
+        private readonly object fileStreamLock = new object();
+        private bool disposed;
         static readonly string tag = "Cache";
         public MD5Cache(string _cacheFilepath, ILog _log)
         {
@@ -44,8 +45,19 @@ namespace picmag
         }
         void PersistCache(string key, string value)
         {
-            fileStream.WriteLine(key + " " + value);
-            fileStream.Flush();
+            string line = Convert.ToBase64String(Encoding.UTF8.GetBytes(key)) + "\t" + Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+            try
+            {
+                lock (fileStreamLock)
+                {
+                    fileStream.WriteLine(line);
+                    fileStream.Flush();
+                }
+            }
+            catch (Exception ex)
+            {
+                log.PrintError(tag, "Error writing cache file: " + ex.Message);
+            }
         }
         public bool TryGetValue(string key, out string value)
         {
@@ -57,9 +69,16 @@ namespace picmag
             value = null;
             return false;
         }
-        public Dictionary<string, string> ReadKeyValueFile(string path)
+        public ConcurrentDictionary<string, string> ReadKeyValueFile(string path)
         {
-            var dictionary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var dictionary = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
             if (!File.Exists(path))
             {
                 try
@@ -81,17 +100,45 @@ namespace picmag
                 if (line.Length == 0)
                     continue;
 
-                var array = line.Split(' ');
-                if (array.Length != 2)
+                string key;
+                string value;
+
+                if (!TryParseLine(line, out key, out value))
                     continue;
-                var key = array.ElementAt(0);
-                var value = array.ElementAt(1);
-                if (key.Length == 0 || value.Length == 0)
-                    continue;
+
                 dictionary[key] = value;
             }
             return dictionary;
         }
+
+        private bool TryParseLine(string line, out string key, out string value)
+        {
+            key = null;
+            value = null;
+
+            var array = line.Split('\t');
+            if (array.Length == 2)
+            {
+                try
+                {
+                    key = Encoding.UTF8.GetString(Convert.FromBase64String(array[0]));
+                    value = Encoding.UTF8.GetString(Convert.FromBase64String(array[1]));
+                    return key.Length > 0 && value.Length > 0;
+                }
+                catch
+                {
+                }
+            }
+
+            var separatorIndex = line.IndexOf(' ');
+            if (separatorIndex <= 0 || separatorIndex >= line.Length - 1)
+                return false;
+
+            key = line.Substring(0, separatorIndex);
+            value = line.Substring(separatorIndex + 1);
+            return key.Length > 0 && value.Length > 0;
+        }
+
         public bool TryAdd(string key, string value)
         {
             bool isAdded = cache.TryAdd(key, value);
@@ -101,6 +148,32 @@ namespace picmag
                 log.PrintDebug(tag, "Added to cache: " + key);
             }
             return isAdded;
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposed)
+                return;
+
+            if (disposing)
+            {
+                lock (fileStreamLock)
+                {
+                    fileStream.Dispose();
+                }
+            }
+            disposed = true;
+        }
+
+        ~MD5Cache()
+        {
+            Dispose(false);
         }
     }
 }

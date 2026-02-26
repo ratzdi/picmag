@@ -48,7 +48,7 @@ namespace picmag
             var fileVersionInfo = FileVersionInfo.GetVersionInfo(executingAssembly.Location);
             Console.WriteLine("Usage of {0} v{1}:", fileVersionInfo.ProductName, fileVersionInfo.FileVersion);
             Console.WriteLine("\t-d <DB filepath> <output filepath> - Find duplicates and write results to a file and to the std output.");
-            Console.WriteLine("\t-i <source path> <target path> [extensions] [--delete-source] - Import files (default extension: jpg)");
+            Console.WriteLine("\t-i <source path> <target path> [extensions] [--delete-source] - Import files (default extensions: jpg,mp4)");
             Console.WriteLine("\t   Warning: --delete-source removes source files only after successful import.");
             Console.WriteLine("\t--version, -v - Print application version and git short revision");
             Console.WriteLine("\t-h help");
@@ -154,7 +154,7 @@ namespace picmag
             Task importTask, databaseTask;
             var importTaskCancellationTokenSource = new CancellationTokenSource();
             var databaseTaskCancellationTokenSource = new CancellationTokenSource();
-            var md5Cache = new MD5Cache(System.IO.Path.Combine(destinationPath, ".picmag", "cache.txt"), log);
+            using var md5Cache = new MD5Cache(System.IO.Path.Combine(destinationPath, ".picmag", "cache.txt"), log);
             var database = new Database(destinationPath, "URI=file:" + databasePath, databaseTaskCancellationTokenSource, log, extensions, md5Cache, deleteSourceAfterImport);
 
             databaseTask = new Task(new Action(database.StartReceiving), databaseTaskCancellationTokenSource.Token);
@@ -217,7 +217,7 @@ namespace picmag
                 if (args.Length >= 3)
                 {
                     var deleteSourceAfterImport = false;
-                    var extensions = new List<string> { "jpg" };
+                    var extensions = new List<string> { "jpg", "mp4" };
 
                     for (int i = 3; i < args.Length; i++)
                     {
@@ -232,9 +232,9 @@ namespace picmag
                         }
                         else
                         {
-                            if (extensions.Count == 1 && extensions[0] == "jpg")
+                            if (extensions.Count == 2 && extensions[0] == "jpg" && extensions[1] == "mp4")
                             {
-                                extensions = new List<string>(args[i].Split(','));
+                                extensions = new List<string>(args[i].ToLower().Split(','));
                             }
                             else
                             {
