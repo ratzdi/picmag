@@ -23,6 +23,9 @@ picmag analyses your collection and creates a clear chronological directory stru
 # Run sanity checks and apply DB sync changes
 ./picmag --sanity-checks /home/user/picture_album --apply-changes
 
+# Migrate legacy cache format to current format
+./picmag --migrate-cache /home/user/picture_album
+
 # After import all files in source directory remain untouched by default.
 ```
 
@@ -85,3 +88,6 @@ dotnet deb
 - [x] Sanity checks
   - optional mode: dry-run (default) or apply changes via `--apply-changes`.
   - outputs log with files missing in DB and orphan DB entries missing on filesystem.
+- [x] Cache migration
+  - supports reading legacy cache format for backward compatibility.
+  - provides `--migrate-cache` to rewrite cache to current format with `.bak` backup.

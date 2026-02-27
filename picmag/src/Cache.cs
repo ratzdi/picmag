@@ -29,6 +29,13 @@ namespace picmag
 {
     public class MD5Cache : IMD5Cache, IDisposable
     {
+        public class CacheMigrationResult
+        {
+            public int ValidEntries { get; set; }
+            public int LegacyEntries { get; set; }
+            public int InvalidEntries { get; set; }
+        }
+
         private readonly string cacheFilepath;
         private readonly ILog log;
         private readonly ConcurrentDictionary<string, string> cache;
@@ -43,6 +50,69 @@ namespace picmag
             cache = ReadKeyValueFile(cacheFilepath);
             fileStream = new StreamWriter(new FileStream(cacheFilepath, FileMode.Append, FileAccess.Write, FileShare.Read));
         }
+
+        public static CacheMigrationResult MigrateFile(string path, ILog log)
+        {
+            var result = new CacheMigrationResult();
+            var dictionary = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            if (!File.Exists(path))
+            {
+                File.Create(path).Dispose();
+                return result;
+            }
+
+            foreach (var rawLine in File.ReadLines(path))
+            {
+                if (rawLine == null)
+                    continue;
+
+                var line = rawLine.Trim();
+                if (line.Length == 0)
+                    continue;
+
+                string key;
+                string value;
+                bool legacyFormat;
+                if (!TryParseLineInternal(line, out key, out value, out legacyFormat))
+                {
+                    result.InvalidEntries++;
+                    continue;
+                }
+
+                if (legacyFormat)
+                    result.LegacyEntries++;
+
+                dictionary[key] = value;
+            }
+
+            result.ValidEntries = dictionary.Count;
+
+            var tempPath = path + ".tmp";
+            var backupPath = path + ".bak";
+
+            using (var writer = new StreamWriter(new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None)))
+            {
+                foreach (var kv in dictionary)
+                {
+                    var line = Convert.ToBase64String(Encoding.UTF8.GetBytes(kv.Key)) + "\t" + Convert.ToBase64String(Encoding.UTF8.GetBytes(kv.Value));
+                    writer.WriteLine(line);
+                }
+            }
+
+            File.Copy(path, backupPath, true);
+            File.Move(tempPath, path, true);
+
+            log.PrintInfo(tag, "Cache migrated: {0}, valid entries: {1}, legacy entries: {2}, invalid entries: {3}", path, result.ValidEntries, result.LegacyEntries, result.InvalidEntries);
+            return result;
+        }
+
         void PersistCache(string key, string value)
         {
             string line = Convert.ToBase64String(Encoding.UTF8.GetBytes(key)) + "\t" + Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
@@ -72,6 +142,7 @@ namespace picmag
         public ConcurrentDictionary<string, string> ReadKeyValueFile(string path)
         {
             var dictionary = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+            var legacyEntries = 0;
 
             var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -102,19 +173,30 @@ namespace picmag
 
                 string key;
                 string value;
+                bool legacyFormat;
 
-                if (!TryParseLine(line, out key, out value))
+                if (!TryParseLineInternal(line, out key, out value, out legacyFormat))
                     continue;
+
+                if (legacyFormat)
+                    legacyEntries++;
 
                 dictionary[key] = value;
             }
+
+            if (legacyEntries > 0)
+            {
+                log.PrintInfo(tag, "Legacy cache format detected: {0} entries in {1}", legacyEntries, path);
+            }
+
             return dictionary;
         }
 
-        private bool TryParseLine(string line, out string key, out string value)
+        private static bool TryParseLineInternal(string line, out string key, out string value, out bool legacyFormat)
         {
             key = null;
             value = null;
+            legacyFormat = false;
 
             var array = line.Split('\t');
             if (array.Length == 2)
@@ -136,6 +218,7 @@ namespace picmag
 
             key = line.Substring(0, separatorIndex);
             value = line.Substring(separatorIndex + 1);
+            legacyFormat = true;
             return key.Length > 0 && value.Length > 0;
         }
 

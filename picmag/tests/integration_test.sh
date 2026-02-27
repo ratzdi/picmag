@@ -201,3 +201,20 @@ test -n "$sanity_report_apply"
 grep -q "Mode: apply-changes" "$sanity_report_apply"
 grep -q "inserted_db_entries_count: 1" "$sanity_report_apply"
 grep -q "removed_db_entries_count: 1" "$sanity_report_apply"
+
+# Ingegration Test 10: migrate legacy cache format
+
+rm -rf ./out/10
+mkdir -p ./out/10/.picmag
+printf "legacy/path.jpg legacy-md5\n" > ./out/10/.picmag/cache.txt
+
+../bin/Debug/netcoreapp8.0/picmag --migrate-cache ./out/10
+
+test -f ./out/10/.picmag/cache.txt
+test -f ./out/10/.picmag/cache.txt.bak
+grep -q "legacy/path.jpg legacy-md5" ./out/10/.picmag/cache.txt.bak
+grep -q $'\t' ./out/10/.picmag/cache.txt
+if grep -q "legacy/path.jpg legacy-md5" ./out/10/.picmag/cache.txt; then
+	echo "Expected migrated cache to use current format"
+	exit 1
+fi
