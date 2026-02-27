@@ -52,6 +52,7 @@ namespace picmag
             Console.WriteLine("\t-i <source path> <target path> [extensions] [--delete-source] - Import files (default extensions: jpg,mp4)");
             Console.WriteLine("\t   Warning: --delete-source removes source files only after successful import.");
             Console.WriteLine("\t--sanity-checks <target path> [extensions] [--dry-run|--apply-changes] - Check DB/filesystem consistency and write report (default: --dry-run, extensions: jpg,mp4)");
+            Console.WriteLine("\t--migrate-cache <target path> - Migrate .picmag/cache.txt to current format and create .bak backup");
             Console.WriteLine("\t--version, -v - Print application version and git short revision");
             Console.WriteLine("\t-h help");
         }
@@ -249,6 +250,22 @@ namespace picmag
             WriteSanityCheckReport(targetPath, extensions, report);
         }
 
+        void HandleMigrateCache(string targetPath)
+        {
+            var cachePath = Path.Combine(targetPath, ".picmag", "cache.txt");
+            try
+            {
+                var result = MD5Cache.MigrateFile(cachePath, log);
+                log.PrintDebug(tag, "Cache migration finished. valid: {0}, legacy: {1}, invalid: {2}", result.ValidEntries, result.LegacyEntries, result.InvalidEntries);
+                log.PrintDebug(tag, "Cache path: {0}", cachePath);
+                log.PrintDebug(tag, "Cache backup path: {0}", cachePath + ".bak");
+            }
+            catch (Exception ex)
+            {
+                log.PrintError(tag, "Failed to migrate cache: {0}", ex.Message);
+            }
+        }
+
         void WriteSanityCheckReport(string targetPath, List<string> extensions, Database.SanityCheckReport report)
         {
             try
@@ -408,6 +425,17 @@ namespace picmag
                     }
 
                     HandleSanityChecks(args[1], extensions, dryRun);
+                }
+                else
+                {
+                    PrintUsage();
+                }
+            }
+            else if (args[0] == "--migrate-cache")
+            {
+                if (args.Length == 2)
+                {
+                    HandleMigrateCache(args[1]);
                 }
                 else
                 {
