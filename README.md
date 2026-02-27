@@ -1,93 +1,129 @@
-## picmag - the picture manager application
+# picmag - picture manager
 
-Helps to manage your picture collection.
+Command-line tool to organize photos and videos into a chronological folder structure.
 
+## Quickstart
 
-### Check it out!
+If you have an unordered image/video collection, `picmag` scans it and imports supported files into a tidy date-based structure.
 
-If you have some unordered borried collection of images located on your storage, this
-tool can help you to give your images a tidy structure. Imagine you have a collection of pictures that is growing up year on year.
-picmag analyses your collection and creates a clear chronological directory structure for all pictures in your collection.
+```bash
+# Build
+dotnet build
 
-```
-# Import all JPG and MP4 files from /home/user/some/borried/collection to /home/user/picture_album
+# Import JPG + MP4 files into a managed target folder
+./picmag -i /home/user/source_collection /home/user/picture_album
 
-./picmag -i /home/user/some/borried/collection /home/user/picture_album
+# Optional: delete source files only after successful import
+./picmag -i /home/user/source_collection /home/user/picture_album --delete-source
 
-# Import and delete only successfully imported source files
-./picmag -i /home/user/some/borried/collection /home/user/picture_album --delete-source
-
-# Run standalone sanity checks as dry-run and write a report log
+# Check consistency between filesystem and DB (default: dry-run)
 ./picmag --sanity-checks /home/user/picture_album
 
-# Run sanity checks and apply DB sync changes
+# Apply sanity-check changes to sync DB <-> filesystem
 ./picmag --sanity-checks /home/user/picture_album --apply-changes
 
-# Migrate legacy cache format to current format
+# Migrate legacy cache format to current format (.bak backup is created)
 ./picmag --migrate-cache /home/user/picture_album
-
-# After import all files in source directory remain untouched by default.
 ```
 
-### Safety behavior of --delete-source
+## CLI reference
 
-- Deletion is opt-in only. Without --delete-source, source files are never deleted.
-- A source file is deleted only after successful copy to destination and successful database insert.
-- Files that are not imported (e.g. unsupported extension, duplicate, existing target) are never deleted.
-- If deletion fails, the import remains successful and the deletion failure is logged.
+- `-i <source path> <target path> [extensions] [--delete-source]`
+  - Imports files from source to target.
+  - Default extensions: `jpg,mp4`
+  - Example custom extensions: `./picmag -i /src /dst jpg,png`
+- `--sanity-checks <target path> [extensions] [--dry-run|--apply-changes]`
+  - Compares files in target with DB entries.
+  - `--dry-run` (default): report only, no DB writes.
+  - `--apply-changes`: inserts missing DB entries and removes orphan DB entries.
+- `--migrate-cache <target path>`
+  - Rewrites `.picmag/cache.txt` to current format.
+  - Creates `.picmag/cache.txt.bak` before replacing.
+- `--version` / `-v`
+  - Prints app version and git short revision.
+- `-h`
+  - Shows usage.
+
+## Safety behavior of `--delete-source`
+
+- Deletion is opt-in only. Without `--delete-source`, source files are never deleted.
+- A source file is deleted only after successful copy and successful DB insert.
+- Files not imported (unsupported extension, duplicate, existing target, etc.) are never deleted.
+- If deletion fails, import remains successful and the deletion failure is logged.
 - If no files are importable, no source files are deleted.
 
-### Dependencies
-- libsqlite3-dev
-- dotnetcore 8.0
-- ffprobe (optional, for MP4 metadata timestamp extraction)
+## Requirements
 
-### Versioning
+- `.NET SDK 8.0`
+- `libsqlite3-dev`
+- `ffprobe` (optional, used for MP4 metadata timestamp extraction)
 
-See [VERSIONING.md](VERSIONING.md) for the Semantic Versioning policy and release process.
+## Build
 
-### Build
-```
+```bash
 dotnet build
 ```
 
-### Run
-```
+## Run
+
+```bash
 ./picmag -h
 ./picmag --version
 ```
 
-### Test
-```
+## Tests
+
+```bash
+# Integration tests
 ./picmag/tests/integration_test.sh
+
+# Unit tests
+dotnet test ./unittests/unittests.csproj
 ```
 
-### Debian Package
+## Architecture notes
 
-Install initially the dotnet-deb tool.
-```
+- CLI is split into parser and command handlers for easier maintenance:
+  - `picmag/src/Program.CommandParser.cs`
+  - `picmag/src/Program.CommandHandlers.cs`
+- Import processing uses a producer/consumer pipeline (`BlockingCollection`) with completion signaling.
+- Database access in `ImagesTable` uses parameterized SQL.
+- File logging uses thread-safe synchronous append to avoid dropped lines.
+
+## Known warnings
+
+- Build may show `NU1701` warnings due to legacy SQLite package compatibility metadata.
+- Current test/build status is green despite these warnings.
+
+## Versioning
+
+See [VERSIONING.md](VERSIONING.md) for the Semantic Versioning policy and release process.
+
+## Debian package
+
+Install `dotnet-deb` first:
+
+```bash
 cd picmag
 dotnet tool install --global dotnet-deb
 dotnet deb install
 ```
 
-Build the package
-```
+Build package:
+
+```bash
 dotnet deb
 ```
 
-### Next Features
+## Features
 
-- [x] Option to delete successfully imported file from the source directory (`--delete-source`).
-- [x] Import video files in mp4 format.
-- [x] Summerizes result of the import as log file:
-  - Number of imported files
-  - List of imported files
-  - Number of not imported files
-  - List of not imported files
-- [x] Sanity checks
-  - optional mode: dry-run (default) or apply changes via `--apply-changes`.
-  - outputs log with files missing in DB and orphan DB entries missing on filesystem.
-- [x] Cache migration
-  - supports reading legacy cache format for backward compatibility.
-  - provides `--migrate-cache` to rewrite cache to current format with `.bak` backup.
+- Import images and videos into date-based directories
+- Optional source cleanup via `--delete-source`
+- Import summary logs with imported / not imported file lists
+- Sanity checks with dry-run (default) and apply mode
+- Cache backward compatibility + explicit cache migration command
+
+## Roadmap
+
+- Add more built-in media extensions and metadata extractors
+- Improve reporting granularity for large imports

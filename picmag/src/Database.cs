@@ -12,7 +12,7 @@ using System.Text.Json;
 
 namespace picmag
 {
-    public class Database
+    public class Database : IDisposable
     {
         public class SanityCheckReport
         {
@@ -24,7 +24,7 @@ namespace picmag
         }
 
         private CancellationTokenSource cancellationTokenSource;
-        private ConcurrentQueue<FileInfo> m_imageQueue = new ConcurrentQueue<FileInfo>();
+        private readonly BlockingCollection<FileInfo> imageQueue = new BlockingCollection<FileInfo>();
         private SqliteConnection sqliteConnection;
         private string importDestinationPath;
         private DateTime session_timestamp;
@@ -42,6 +42,7 @@ namespace picmag
         public ImagesTable Images { get; private set; }
         private readonly List<string> importedFiles = new List<string>();
         private readonly List<string> notImportedFiles = new List<string>();
+        private bool disposed;
         public Database(string importDestinationPath, string databaseFilepath, CancellationTokenSource cts, ILog log, List<string> extensions, MD5Cache cache, bool deleteSourceAfterImport = false)
         {
             cancellationTokenSource = cts;
@@ -57,16 +58,45 @@ namespace picmag
         }
         ~Database()
         {
-            if (sqliteConnection != null && sqliteConnection.State != ConnectionState.Closed)
-                sqliteConnection.Close();
+            Dispose(false);
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposed)
+                return;
+
+            if (sqliteConnection != null)
+            {
+                if (sqliteConnection.State != ConnectionState.Closed)
+                    sqliteConnection.Close();
+                sqliteConnection.Dispose();
+            }
+
+            imageQueue.Dispose();
+
+            disposed = true;
         }
         public void OnAddFile(object obj, FileFoundEventArgs args)
         {
-            m_imageQueue.Enqueue(args.FileInfo);
+            if (!imageQueue.IsAddingCompleted)
+                imageQueue.Add(args.FileInfo);
+        }
+
+        public void CompleteReceiving()
+        {
+            if (!imageQueue.IsAddingCompleted)
+                imageQueue.CompleteAdding();
         }
         public int GetImageQueueSize()
         {
-            return m_imageQueue.Count;
+            return imageQueue.Count;
         }
         public List<string> GetDuplicates()
         {
@@ -75,11 +105,10 @@ namespace picmag
         }
         public void StartReceiving()
         {
-            FileInfo item;
             var utils = new Utils();
-            while (!cancellationTokenSource.IsCancellationRequested)
+            try
             {
-                if (m_imageQueue.TryDequeue(out item))
+                foreach (var item in imageQueue.GetConsumingEnumerable(cancellationTokenSource.Token))
                 {
                     try
                     {
@@ -110,10 +139,9 @@ namespace picmag
                         log.PrintError(tag, ex.StackTrace);
                     }
                 }
-                else
-                {
-                    Thread.Sleep(10);
-                }
+            }
+            catch (OperationCanceledException)
+            {
             }
         }
         private bool CopyAndInsertFile(FileInfo item, Utils utils, string md5, string targetPath, DateTime creationTime)
