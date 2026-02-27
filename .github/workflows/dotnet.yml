@@ -55,3 +55,28 @@ jobs:
     - name: Run integration tests
       run: chmod +x ./integration_test.sh && ./integration_test.sh
       working-directory: picmag/tests
+
+  build-deb:
+
+    needs: integration-tests
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+    - name: Install dotnet-deb
+      run: dotnet tool install --global dotnet-deb
+    - name: Build Debian package
+      run: dotnet deb
+      working-directory: picmag
+    - name: Upload Debian package artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: picmag-debian-package
+        path: picmag/**/*.deb
