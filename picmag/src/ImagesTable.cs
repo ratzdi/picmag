@@ -23,7 +23,6 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Text;
 using Mono.Data.Sqlite;
 
 namespace picmag
@@ -41,155 +40,155 @@ public class ImagesTable
         }
         public int Create()
         {
-            var command = sqliteConnection.CreateCommand();
-            string createString = @"create table if not exists images(
+            using (var command = sqliteConnection.CreateCommand())
+            {
+                string createString = @"create table if not exists images(
                                 path            TEXT        NOT NULL,
                                 created         INTEGER     NOT NULL,
                                 md5             TEXT        NOT NULL
                                 );";
-            command.CommandText = createString;
-            return command.ExecuteNonQuery();
+                command.CommandText = createString;
+                return command.ExecuteNonQuery();
+            }
         }
         public void Insert(string path, DateTime created, string md5)
         {
-            IDbCommand dbcmd = sqliteConnection.CreateCommand();
-            // todo: try insert or ignore into images ...
-            string sql;
-            SqliteParameter param;
-            sql = "insert into images (path, created, md5) values (?,?,?);";
-            dbcmd.CommandText = sql;
-            param = new SqliteParameter("path", path);
-            dbcmd.Parameters.Add(param);
-
-            DateTimeOffset unix;
-            unix = new DateTimeOffset(created);
-            param = new SqliteParameter("created", unix.ToUnixTimeSeconds());
-            dbcmd.Parameters.Add(param);
-            param = new SqliteParameter("md5", md5);
-            dbcmd.Parameters.Add(param);
-            if (dbcmd.ExecuteNonQuery() > 0)
+            using (IDbCommand dbcmd = sqliteConnection.CreateCommand())
             {
-                log.PrintDebug(tag, "Image inserted: " + path);
+                string sql;
+                SqliteParameter param;
+                sql = "insert into images (path, created, md5) values (?,?,?);";
+                dbcmd.CommandText = sql;
+                param = new SqliteParameter("path", path);
+                dbcmd.Parameters.Add(param);
+
+                DateTimeOffset unix;
+                unix = new DateTimeOffset(created);
+                param = new SqliteParameter("created", unix.ToUnixTimeSeconds());
+                dbcmd.Parameters.Add(param);
+                param = new SqliteParameter("md5", md5);
+                dbcmd.Parameters.Add(param);
+                if (dbcmd.ExecuteNonQuery() > 0)
+                {
+                    log.PrintDebug(tag, "Image inserted: " + path);
+                }
             }
         }
         public void Update(string path, DateTime created, byte[] md5)
         {
-            IDbCommand dbcmd = sqliteConnection.CreateCommand();
-            // todo: try insert or ignore into images ...
-            string sql;
-            SqliteParameter param;
-            sql = "update images set md5='?', created=? where path='?';";
-            dbcmd.CommandText = sql;
-            param = new SqliteParameter("md5", BitConverter.ToString(md5));
-            dbcmd.Parameters.Add(param);
-            DateTimeOffset unix;
-            unix = new DateTimeOffset(created);
-            param = new SqliteParameter("created", unix.ToUnixTimeSeconds());
-            dbcmd.Parameters.Add(param);
-            param = new SqliteParameter("path", path);
-            dbcmd.Parameters.Add(param);
-            if (dbcmd.ExecuteNonQuery() > 0)
+            using (IDbCommand dbcmd = sqliteConnection.CreateCommand())
             {
-                log.PrintDebug(tag, "Image updated: " + path);
+                string sql;
+                SqliteParameter param;
+                sql = "update images set md5=?, created=? where path=?;";
+                dbcmd.CommandText = sql;
+                param = new SqliteParameter("md5", BitConverter.ToString(md5));
+                dbcmd.Parameters.Add(param);
+                DateTimeOffset unix;
+                unix = new DateTimeOffset(created);
+                param = new SqliteParameter("created", unix.ToUnixTimeSeconds());
+                dbcmd.Parameters.Add(param);
+                param = new SqliteParameter("path", path);
+                dbcmd.Parameters.Add(param);
+                if (dbcmd.ExecuteNonQuery() > 0)
+                {
+                    log.PrintDebug(tag, "Image updated: " + path);
+                }
             }
         }
         public bool FindDuplicate(string imageFullPath5)
         {
-            var dbcmd = sqliteConnection.CreateCommand();
-            var sql = new StringBuilder();
-            sql.Append("select * from images where path == " + imageFullPath5 + ";");
-            dbcmd.CommandText = sql.ToString();
-            dbcmd.CommandType = CommandType.Text;
-            var reader = dbcmd.ExecuteReader();
-
-            if (reader.Read())
+            using (var dbcmd = sqliteConnection.CreateCommand())
             {
-                return true;
-            }
-            else
-            {
-                return false;
+                dbcmd.CommandText = "select 1 from images where path = ? limit 1;";
+                dbcmd.CommandType = CommandType.Text;
+                dbcmd.Parameters.Add(new SqliteParameter("path", imageFullPath5));
+                using (var reader = dbcmd.ExecuteReader())
+                {
+                    return reader.Read();
+                }
             }
         }
         public int FindDuplicates()
         {
-            var dbcmd = sqliteConnection.CreateCommand();
-            var rows = new Dictionary<string, string>();
-            dbcmd.CommandText = "select * from images;";
-            dbcmd.CommandType = CommandType.Text;
-            var reader = dbcmd.ExecuteReader();
-            while (reader.Read())
+            using (var dbcmd = sqliteConnection.CreateCommand())
             {
-                rows.Add(reader["path"].ToString(), reader["md5"].ToString());
-            }
-            var duplicateList = new List<string>();
-            foreach (var row in rows)
-            {
-                foreach (var tmp in rows)
+                dbcmd.CommandText = "select md5, count(*) as duplicate_count from images group by md5 having count(*) > 1;";
+                dbcmd.CommandType = CommandType.Text;
+
+                int duplicateEntries = 0;
+                using (var reader = dbcmd.ExecuteReader())
                 {
-                    if (row.Key != tmp.Key && !duplicateList.Contains(row.Key))
+                    while (reader.Read())
                     {
-                        if (row.Value == tmp.Value)
-                        {
-                            log.PrintDebug(tag, "Duplicate found for " + row.Key + " in " + tmp.Key);
-                            duplicateList.Add(tmp.Key);
-                        }
+                        var md5 = reader["md5"].ToString();
+                        var duplicateCount = Convert.ToInt32(reader["duplicate_count"]);
+                        duplicateEntries += duplicateCount;
+                        log.PrintDebug(tag, "Duplicate group found for md5 {0}: {1} files", md5, duplicateCount);
                     }
                 }
+
+                return duplicateEntries;
             }
-            return duplicateList.Count;
         }
 
         public bool ImageExists(string path, string md5)
         {
-            bool result = false;
-            var dbcmd = sqliteConnection.CreateCommand();
-            dbcmd.CommandText = "select * from images where md5 = '" + md5 + "' AND path ='" + path + "';";
-            dbcmd.CommandType = CommandType.Text;
-            var reader = dbcmd.ExecuteReader();
-            if (reader.Read())
+            using (var dbcmd = sqliteConnection.CreateCommand())
             {
-                result = true;
+                dbcmd.CommandText = "select 1 from images where md5 = ? AND path = ? limit 1;";
+                dbcmd.CommandType = CommandType.Text;
+                dbcmd.Parameters.Add(new SqliteParameter("md5", md5));
+                dbcmd.Parameters.Add(new SqliteParameter("path", path));
+                using (var reader = dbcmd.ExecuteReader())
+                {
+                    return reader.Read();
+                }
             }
-            return result;
         }
 
         public bool ImageExists(string path)
         {
-            bool result = false;
-            var dbcmd = sqliteConnection.CreateCommand();
-            dbcmd.CommandText = "select * from images where path = '" + path + "';";
-            dbcmd.CommandType = CommandType.Text;
-            var reader = dbcmd.ExecuteReader();
-            if (reader.Read())
+            using (var dbcmd = sqliteConnection.CreateCommand())
             {
-                result = true;
+                dbcmd.CommandText = "select 1 from images where path = ? limit 1;";
+                dbcmd.CommandType = CommandType.Text;
+                dbcmd.Parameters.Add(new SqliteParameter("path", path));
+                using (var reader = dbcmd.ExecuteReader())
+                {
+                    return reader.Read();
+                }
             }
-            return result;
         }
 
         public List<string> GetAllPaths()
         {
             var result = new List<string>();
-            var dbcmd = sqliteConnection.CreateCommand();
-            dbcmd.CommandText = "select path from images;";
-            dbcmd.CommandType = CommandType.Text;
-            var reader = dbcmd.ExecuteReader();
-            while (reader.Read())
+            using (var dbcmd = sqliteConnection.CreateCommand())
             {
-                result.Add(reader["path"].ToString());
+                dbcmd.CommandText = "select path from images;";
+                dbcmd.CommandType = CommandType.Text;
+                using (var reader = dbcmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        result.Add(reader["path"].ToString());
+                    }
+                }
             }
             return result;
         }
 
         public int RemoveByPath(string path)
         {
-            IDbCommand dbcmd = sqliteConnection.CreateCommand();
-            var sql = "delete from images where path = ?;";
-            dbcmd.CommandText = sql;
-            var param = new SqliteParameter("path", path);
-            dbcmd.Parameters.Add(param);
-            return dbcmd.ExecuteNonQuery();
+            using (IDbCommand dbcmd = sqliteConnection.CreateCommand())
+            {
+                var sql = "delete from images where path = ?;";
+                dbcmd.CommandText = sql;
+                var param = new SqliteParameter("path", path);
+                dbcmd.Parameters.Add(param);
+                return dbcmd.ExecuteNonQuery();
+            }
         }
     }
 }

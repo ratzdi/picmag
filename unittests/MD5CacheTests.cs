@@ -27,8 +27,8 @@ namespace unittests
     [TestClass]
     public class MD5CacheTests
     {
-        private string tempCacheFile;
-        private MockLog mockLog;
+        private string tempCacheFile = null!;
+        private MockLog mockLog = null!;
 
         [TestInitialize]
         public void Setup()

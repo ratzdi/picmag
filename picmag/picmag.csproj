@@ -11,6 +11,5 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Mono.Data.Sqlite" Version="1.0.61"/>
-    <PackageReference Include="Plugin.SQLiteConnection" Version="1.0.0"/>
   </ItemGroup>
 </Project>

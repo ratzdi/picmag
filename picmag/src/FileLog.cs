@@ -24,6 +24,7 @@ namespace picmag
 {
     public class FileLog : Log
     {
+        private static readonly object outputFileLock = new object();
         private string outputFilepath;
         public FileLog(string outputFilepath)
         {
@@ -32,7 +33,10 @@ namespace picmag
         protected override void Print(string logLine)
         {
             base.Print(logLine);
-            System.IO.File.AppendAllTextAsync(outputFilepath, logLine + System.Environment.NewLine);
+            lock (outputFileLock)
+            {
+                System.IO.File.AppendAllText(outputFilepath, logLine + System.Environment.NewLine);
+            }
             System.Diagnostics.Debug.WriteLine(logLine);
         }
     }
