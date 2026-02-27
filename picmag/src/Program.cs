@@ -51,6 +51,7 @@ namespace picmag
             Console.WriteLine("\t-d <DB filepath> <output filepath> - Find duplicates and write results to a file and to the std output.");
             Console.WriteLine("\t-i <source path> <target path> [extensions] [--delete-source] - Import files (default extensions: jpg,mp4)");
             Console.WriteLine("\t   Warning: --delete-source removes source files only after successful import.");
+            Console.WriteLine("\t--sanity-checks <target path> [extensions] [--dry-run|--apply-changes] - Check DB/filesystem consistency and write report (default: --dry-run, extensions: jpg,mp4)");
             Console.WriteLine("\t--version, -v - Print application version and git short revision");
             Console.WriteLine("\t-h help");
         }
@@ -226,6 +227,73 @@ namespace picmag
             }
         }
 
+        void HandleSanityChecks(string targetPath, List<string> extensions, bool dryRun)
+        {
+            var databaseFullpath = System.IO.Path.Combine(targetPath, relDatabaseFilepath);
+            if (!System.IO.File.Exists(databaseFullpath))
+            {
+                var utils = new Utils();
+                utils.CreateDirectoryPath(databaseFullpath);
+                HandleCreateDatabase(databaseFullpath);
+            }
+
+            var databaseTaskCancellationTokenSource = new CancellationTokenSource();
+            using var md5Cache = new MD5Cache(System.IO.Path.Combine(targetPath, ".picmag", "cache.txt"), log);
+            var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseTaskCancellationTokenSource, log, extensions, md5Cache);
+
+            log.PrintDebug(tag, "Sanity check DB filepath: {0}", databaseFullpath);
+            log.PrintDebug(tag, "Sanity check target path: {0}", targetPath);
+            log.PrintDebug(tag, "Sanity check dry-run: {0}", dryRun);
+
+            var report = database.RunSanityCheck(dryRun);
+            WriteSanityCheckReport(targetPath, extensions, report);
+        }
+
+        void WriteSanityCheckReport(string targetPath, List<string> extensions, Database.SanityCheckReport report)
+        {
+            try
+            {
+                var reportDirectory = Path.Combine(targetPath, ".picmag");
+                Directory.CreateDirectory(reportDirectory);
+                var reportFilePath = Path.Combine(reportDirectory, $"sanity-check-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+
+                var content = new StringBuilder();
+                content.AppendLine("Sanity Check Report");
+                content.AppendLine($"Generated at: {DateTime.Now:O}");
+                content.AppendLine($"Target path: {targetPath}");
+                content.AppendLine($"Extensions: {string.Join(",", extensions)}");
+                content.AppendLine($"Mode: {(report.IsDryRun ? "dry-run" : "apply-changes")}");
+                content.AppendLine($"missing_db_entries_count: {report.MissingDatabaseEntries.Count}");
+                content.AppendLine($"orphan_db_entries_count: {report.OrphanDatabaseEntries.Count}");
+                content.AppendLine($"inserted_db_entries_count: {report.InsertedDatabaseEntries}");
+                content.AppendLine($"removed_db_entries_count: {report.RemovedDatabaseEntries}");
+                content.AppendLine();
+
+                content.AppendLine("Files missing in DB:");
+                foreach (var file in report.MissingDatabaseEntries)
+                {
+                    content.AppendLine(file);
+                }
+
+                content.AppendLine();
+                content.AppendLine("DB entries missing on filesystem:");
+                foreach (var file in report.OrphanDatabaseEntries)
+                {
+                    content.AppendLine(file);
+                }
+
+                content.AppendLine();
+                content.AppendLine(report.IsDryRun ? "No changes applied (dry-run)." : "Changes applied.");
+
+                File.WriteAllText(reportFilePath, content.ToString());
+                log.PrintDebug(tag, "Sanity check report written to: {0}", reportFilePath);
+            }
+            catch (Exception ex)
+            {
+                log.PrintError(tag, "Failed to write sanity check report: {0}", ex.Message);
+            }
+        }
+
         void Start(string[] args)
         {
             if (args.Length == 1 && (args[0] == "--version" || args[0] == "-v"))
@@ -297,6 +365,49 @@ namespace picmag
                     log.PrintDebug(tag, "Target path: {0}", args[2]);
                     log.PrintDebug(tag, "Delete source after import: {0}", deleteSourceAfterImport);
                     HandleImportImages(databaseFullpath, args[1], args[2], extensions, deleteSourceAfterImport);
+                }
+                else
+                {
+                    PrintUsage();
+                }
+            }
+            else if (args[0] == "--sanity-checks")
+            {
+                if (args.Length >= 2)
+                {
+                    var extensions = new List<string> { "jpg", "mp4" };
+                    var dryRun = true;
+
+                    for (int i = 2; i < args.Length; i++)
+                    {
+                        if (args[i] == "--apply-changes")
+                        {
+                            dryRun = false;
+                        }
+                        else if (args[i] == "--dry-run")
+                        {
+                            dryRun = true;
+                        }
+                        else if (args[i].StartsWith("-"))
+                        {
+                            PrintUsage();
+                            return;
+                        }
+                        else
+                        {
+                            if (extensions.Count == 2 && extensions[0] == "jpg" && extensions[1] == "mp4")
+                            {
+                                extensions = new List<string>(args[i].ToLower().Split(','));
+                            }
+                            else
+                            {
+                                PrintUsage();
+                                return;
+                            }
+                        }
+                    }
+
+                    HandleSanityChecks(args[1], extensions, dryRun);
                 }
                 else
                 {

@@ -17,6 +17,12 @@ picmag analyses your collection and creates a clear chronological directory stru
 # Import and delete only successfully imported source files
 ./picmag -i /home/user/some/borried/collection /home/user/picture_album --delete-source
 
+# Run standalone sanity checks as dry-run and write a report log
+./picmag --sanity-checks /home/user/picture_album
+
+# Run sanity checks and apply DB sync changes
+./picmag --sanity-checks /home/user/picture_album --apply-changes
+
 # After import all files in source directory remain untouched by default.
 ```
 
@@ -76,5 +82,6 @@ dotnet deb
   - List of imported files
   - Number of not imported files
   - List of not imported files
-- Sanity checks
-  - sync the database with filesystem, i.e. if an DB entry does not exist on filesystem, the entry must be removed and vice-versa.
+- [x] Sanity checks
+  - optional mode: dry-run (default) or apply changes via `--apply-changes`.
+  - outputs log with files missing in DB and orphan DB entries missing on filesystem.

@@ -14,6 +14,15 @@ namespace picmag
 {
     public class Database
     {
+        public class SanityCheckReport
+        {
+            public List<string> MissingDatabaseEntries { get; } = new List<string>();
+            public List<string> OrphanDatabaseEntries { get; } = new List<string>();
+            public int InsertedDatabaseEntries { get; set; }
+            public int RemovedDatabaseEntries { get; set; }
+            public bool IsDryRun { get; set; } = true;
+        }
+
         private CancellationTokenSource cancellationTokenSource;
         private ConcurrentQueue<FileInfo> m_imageQueue = new ConcurrentQueue<FileInfo>();
         private SqliteConnection sqliteConnection;
@@ -311,6 +320,105 @@ namespace picmag
         private void AddNotImported(string sourcePath, string reason)
         {
             notImportedFiles.Add(sourcePath + " (" + reason + ")");
+        }
+
+        public SanityCheckReport RunSanityCheck(bool dryRun)
+        {
+            var report = new SanityCheckReport { IsDryRun = dryRun };
+            if (string.IsNullOrWhiteSpace(importDestinationPath))
+                return report;
+
+            var supportedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var extension in extensions)
+            {
+                supportedExtensions.Add(extension.Trim('.'));
+            }
+
+            var filesystemFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var allFiles = Directory.EnumerateFiles(importDestinationPath, "*", SearchOption.AllDirectories);
+            foreach (var fullPath in allFiles)
+            {
+                var relativePath = Path.GetRelativePath(importDestinationPath, fullPath);
+                if (relativePath.StartsWith(".picmag" + Path.DirectorySeparatorChar) || relativePath.Equals(".picmag"))
+                    continue;
+
+                var extension = Path.GetExtension(fullPath).Trim('.').ToLower();
+                if (!supportedExtensions.Contains(extension))
+                    continue;
+
+                filesystemFiles[relativePath.Replace('\\', '/')] = fullPath;
+            }
+
+            var databasePaths = Images.GetAllPaths();
+            var databasePathSet = new HashSet<string>(databasePaths, StringComparer.OrdinalIgnoreCase);
+            var utils = dryRun ? null : new Utils();
+
+            foreach (var dbPath in databasePaths)
+            {
+                if (!filesystemFiles.ContainsKey(dbPath))
+                {
+                    report.OrphanDatabaseEntries.Add(dbPath);
+
+                    if (!dryRun)
+                    {
+                        try
+                        {
+                            var removed = Images.RemoveByPath(dbPath);
+                            if (removed > 0)
+                            {
+                                report.RemovedDatabaseEntries += removed;
+                                log.PrintInfo(tag, "Sanity check removed DB entry: {0}", dbPath);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            log.PrintError(tag, ex.Message);
+                            log.PrintError(tag, ex.StackTrace);
+                        }
+                    }
+                }
+            }
+
+            foreach (var fileEntry in filesystemFiles)
+            {
+                var relativePath = fileEntry.Key;
+
+                if (databasePathSet.Contains(relativePath))
+                    continue;
+
+                report.MissingDatabaseEntries.Add(relativePath);
+
+                if (!dryRun)
+                {
+                    try
+                    {
+                        var fullPath = fileEntry.Value;
+                        var created = File.GetCreationTime(fullPath);
+                        var md5 = BitConverter.ToString(utils.GetMd5(fullPath));
+                        Images.Insert(relativePath, created, md5);
+                        report.InsertedDatabaseEntries++;
+                        log.PrintInfo(tag, "Sanity check inserted DB entry: {0}", relativePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.PrintError(tag, ex.Message);
+                        log.PrintError(tag, ex.StackTrace);
+                    }
+                }
+            }
+
+            log.PrintDebug(tag, "Sanity check finished. Dry-run: {0}, missing DB entries: {1}, orphan DB entries: {2}, inserted DB entries: {3}, removed DB entries: {4}",
+                dryRun,
+                report.MissingDatabaseEntries.Count,
+                report.OrphanDatabaseEntries.Count,
+                report.InsertedDatabaseEntries,
+                report.RemovedDatabaseEntries);
+            return report;
+        }
+
+        public SanityCheckReport RunSanityCheckDryRun()
+        {
+            return RunSanityCheck(true);
         }
 
         private bool TryGetMp4CreationTime(FileInfo item, out DateTime creationTime)
