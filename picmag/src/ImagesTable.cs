@@ -167,5 +167,29 @@ public class ImagesTable
             }
             return result;
         }
+
+        public List<string> GetAllPaths()
+        {
+            var result = new List<string>();
+            var dbcmd = sqliteConnection.CreateCommand();
+            dbcmd.CommandText = "select path from images;";
+            dbcmd.CommandType = CommandType.Text;
+            var reader = dbcmd.ExecuteReader();
+            while (reader.Read())
+            {
+                result.Add(reader["path"].ToString());
+            }
+            return result;
+        }
+
+        public int RemoveByPath(string path)
+        {
+            IDbCommand dbcmd = sqliteConnection.CreateCommand();
+            var sql = "delete from images where path = ?;";
+            dbcmd.CommandText = sql;
+            var param = new SqliteParameter("path", path);
+            dbcmd.Parameters.Add(param);
+            return dbcmd.ExecuteNonQuery();
+        }
     }
 }

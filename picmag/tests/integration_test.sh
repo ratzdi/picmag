@@ -149,3 +149,55 @@ if command -v ffprobe >/dev/null 2>&1; then
 else
 	echo "Skip Integration Test 7: ffprobe not installed"
 fi
+
+# Ingegration Test 8: sanity check sync database with filesystem
+
+rm -rf ./out/8
+../bin/Debug/netcoreapp8.0/picmag -i ./in/1 ./out/8
+
+test -f ./out/8/2018/11/30/46173826831_f8dddb93d6_o.jpg
+rm ./out/8/2018/11/30/46173826831_f8dddb93d6_o.jpg
+
+mkdir -p ./out/8/2017/01/01
+cp ./in/1/46233278832_080afdbd7d_o.jpg ./out/8/2017/01/01/manual_added.jpg
+
+../bin/Debug/netcoreapp8.0/picmag --sanity-checks ./out/8
+
+removed_path_count=$(sqlite3 ./out/8/.picmag/database.sqlite "select count(*) from images where path = '2018/11/30/46173826831_f8dddb93d6_o.jpg';")
+test "$removed_path_count" -eq 1
+
+added_path_count=$(sqlite3 ./out/8/.picmag/database.sqlite "select count(*) from images where path = '2017/01/01/manual_added.jpg';")
+test "$added_path_count" -eq 0
+
+sanity_report=$(find ./out/8/.picmag -maxdepth 1 -type f -name 'sanity-check-*.log' | head -n1)
+test -n "$sanity_report"
+grep -q "Mode: dry-run" "$sanity_report"
+grep -q "missing_db_entries_count: 1" "$sanity_report"
+grep -q "orphan_db_entries_count: 1" "$sanity_report"
+grep -q "2017/01/01/manual_added.jpg" "$sanity_report"
+grep -q "2018/11/30/46173826831_f8dddb93d6_o.jpg" "$sanity_report"
+
+# Ingegration Test 9: sanity check apply changes
+
+rm -rf ./out/9
+../bin/Debug/netcoreapp8.0/picmag -i ./in/1 ./out/9
+
+test -f ./out/9/2018/11/30/46173826831_f8dddb93d6_o.jpg
+rm ./out/9/2018/11/30/46173826831_f8dddb93d6_o.jpg
+
+mkdir -p ./out/9/2017/01/01
+cp ./in/1/46233278832_080afdbd7d_o.jpg ./out/9/2017/01/01/manual_added.jpg
+
+../bin/Debug/netcoreapp8.0/picmag --sanity-checks ./out/9 --apply-changes
+
+removed_path_count_apply=$(sqlite3 ./out/9/.picmag/database.sqlite "select count(*) from images where path = '2018/11/30/46173826831_f8dddb93d6_o.jpg';")
+test "$removed_path_count_apply" -eq 0
+
+added_path_count_apply=$(sqlite3 ./out/9/.picmag/database.sqlite "select count(*) from images where path = '2017/01/01/manual_added.jpg';")
+test "$added_path_count_apply" -eq 1
+
+sanity_report_apply=$(find ./out/9/.picmag -maxdepth 1 -type f -name 'sanity-check-*.log' | head -n1)
+test -n "$sanity_report_apply"
+grep -q "Mode: apply-changes" "$sanity_report_apply"
+grep -q "inserted_db_entries_count: 1" "$sanity_report_apply"
+grep -q "removed_db_entries_count: 1" "$sanity_report_apply"
