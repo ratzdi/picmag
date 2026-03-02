@@ -46,8 +46,9 @@ namespace picmag
             var fileVersionInfo = FileVersionInfo.GetVersionInfo(executingAssembly.Location);
             Console.WriteLine("Usage of {0} v{1}:", fileVersionInfo.ProductName, fileVersionInfo.FileVersion);
             Console.WriteLine("\t-d <DB filepath> <output filepath> - Find duplicates and write results to a file and to the std output.");
-            Console.WriteLine("\t-i <source path> <target path> [extensions] [--delete-source] - Import files (default extensions: jpg,mp4)");
+            Console.WriteLine("\t-i <source path> <target path> [extensions] [--delete-source] [--quality-filter off|warn|strict] [--quality-report] - Import files (default extensions: jpg,mp4)");
             Console.WriteLine("\t   Warning: --delete-source removes source files only after successful import.");
+            Console.WriteLine("\t   Quality filter: off (default), warn (flag for review), strict (skip hard fails). --quality-report writes a per-file quality report.");
             Console.WriteLine("\t--sanity-checks <target path> [extensions] [--dry-run|--apply-changes] - Check DB/filesystem consistency and write report (default: --dry-run, extensions: jpg,mp4)");
             Console.WriteLine("\t--migrate-cache <target path> - Migrate .picmag/cache.txt to current format and create .bak backup");
             Console.WriteLine("\t--version, -v - Print application version and git short revision");

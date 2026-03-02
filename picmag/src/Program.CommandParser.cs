@@ -20,6 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 
 namespace picmag
@@ -46,6 +47,8 @@ namespace picmag
             public List<string> Extensions { get; set; } = new List<string> { "jpg", "mp4" };
             public bool DeleteSourceAfterImport { get; set; }
             public bool DryRun { get; set; } = true;
+            public QualityFilterMode QualityFilterMode { get; set; } = QualityFilterMode.Off;
+            public bool WriteQualityReport { get; set; }
         }
 
         void Start(string[] args)
@@ -131,6 +134,21 @@ namespace picmag
                 {
                     parsed.DeleteSourceAfterImport = true;
                 }
+                else if (args[i] == "--quality-report")
+                {
+                    parsed.WriteQualityReport = true;
+                }
+                else if (args[i] == "--quality-filter")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    if (!TryParseQualityFilterMode(args[i + 1], out var qualityFilterMode))
+                        return false;
+
+                    parsed.QualityFilterMode = qualityFilterMode;
+                    i++;
+                }
                 else if (args[i].StartsWith("-"))
                 {
                     return false;
@@ -147,6 +165,31 @@ namespace picmag
 
             request = parsed;
             return true;
+        }
+
+        bool TryParseQualityFilterMode(string rawValue, out QualityFilterMode qualityFilterMode)
+        {
+            qualityFilterMode = QualityFilterMode.Off;
+
+            if (string.Equals(rawValue, "off", StringComparison.OrdinalIgnoreCase))
+            {
+                qualityFilterMode = QualityFilterMode.Off;
+                return true;
+            }
+
+            if (string.Equals(rawValue, "warn", StringComparison.OrdinalIgnoreCase))
+            {
+                qualityFilterMode = QualityFilterMode.Warn;
+                return true;
+            }
+
+            if (string.Equals(rawValue, "strict", StringComparison.OrdinalIgnoreCase))
+            {
+                qualityFilterMode = QualityFilterMode.Strict;
+                return true;
+            }
+
+            return false;
         }
 
         bool TryParseSanityChecksCommand(string[] args, out CommandRequest request)

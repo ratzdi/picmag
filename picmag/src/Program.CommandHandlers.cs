@@ -48,14 +48,14 @@ namespace picmag
             log.PrintDebug(tag, "Sqlite database created.");
         }
 
-        void HandleImportImages(string databasePath, string sourcePath, string destinationPath, List<string> extensions, bool deleteSourceAfterImport)
+        void HandleImportImages(string databasePath, string sourcePath, string destinationPath, List<string> extensions, bool deleteSourceAfterImport, QualityFilterMode qualityFilterMode, bool writeQualityReport)
         {
             DateTime t1 = DateTime.Now;
             Task importTask, databaseTask;
             var importTaskCancellationTokenSource = new CancellationTokenSource();
             var databaseTaskCancellationTokenSource = new CancellationTokenSource();
             using var md5Cache = new MD5Cache(System.IO.Path.Combine(destinationPath, ".picmag", "cache.txt"), log);
-            using var database = new Database(destinationPath, "URI=file:" + databasePath, databaseTaskCancellationTokenSource, log, extensions, md5Cache, deleteSourceAfterImport);
+            using var database = new Database(destinationPath, "URI=file:" + databasePath, databaseTaskCancellationTokenSource, log, extensions, md5Cache, deleteSourceAfterImport, qualityFilterMode);
 
             databaseTask = new Task(new Action(database.StartReceiving), databaseTaskCancellationTokenSource.Token);
             databaseTask.Start();
@@ -76,12 +76,19 @@ namespace picmag
             log.PrintDebug(tag, "Files imported: " + database.InsertedImageCount);
             log.PrintDebug(tag, "Source files deleted: " + database.DeletedSourceFileCount);
             log.PrintDebug(tag, "Source file delete failures: " + database.DeleteSourceFailedCount);
+            log.PrintDebug(tag, "Quality filter mode: {0}", qualityFilterMode);
+            log.PrintDebug(tag, "Quality reviewed files: {0}", database.QualityReviewCount);
+            log.PrintDebug(tag, "Quality rejected files: {0}", database.QualityRejectedCount);
+            log.PrintDebug(tag, "Quality analysis errors: {0}", database.QualityErrorCount);
             log.PrintDebug(tag, "Process took: " + importDuration.ToString());
 
-            WriteImportSummary(destinationPath, imageFinder.TotalFilesCount, database, importDuration);
+            WriteImportSummary(destinationPath, imageFinder.TotalFilesCount, database, importDuration, qualityFilterMode);
+
+            if (writeQualityReport)
+                WriteQualityReport(destinationPath, database, qualityFilterMode);
         }
 
-        void WriteImportSummary(string destinationPath, uint totalFilesCount, Database database, TimeSpan duration)
+        void WriteImportSummary(string destinationPath, uint totalFilesCount, Database database, TimeSpan duration, QualityFilterMode qualityFilterMode)
         {
             try
             {
@@ -95,6 +102,10 @@ namespace picmag
                 content.AppendLine($"Number of scanned files: {totalFilesCount}");
                 content.AppendLine($"Number of imported files: {database.InsertedImageCount}");
                 content.AppendLine($"Number of not imported files: {database.NotImportedFiles.Count}");
+                content.AppendLine($"Quality filter mode: {qualityFilterMode.ToString().ToLowerInvariant()}");
+                content.AppendLine($"Quality reviewed files: {database.QualityReviewCount}");
+                content.AppendLine($"Quality rejected files: {database.QualityRejectedCount}");
+                content.AppendLine($"Quality analysis errors: {database.QualityErrorCount}");
                 content.AppendLine($"Process duration: {duration}");
                 content.AppendLine();
                 content.AppendLine("List of imported files:");
@@ -116,6 +127,39 @@ namespace picmag
             catch (Exception ex)
             {
                 log.PrintError(tag, "Failed to write import summary: {0}", ex.Message);
+            }
+        }
+
+        void WriteQualityReport(string destinationPath, Database database, QualityFilterMode qualityFilterMode)
+        {
+            try
+            {
+                var reportDirectory = Path.Combine(destinationPath, ".picmag");
+                Directory.CreateDirectory(reportDirectory);
+                var reportFilePath = Path.Combine(reportDirectory, $"quality-report-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+
+                var content = new StringBuilder();
+                content.AppendLine("Quality Report");
+                content.AppendLine($"Generated at: {DateTime.Now:O}");
+                content.AppendLine($"Mode: {qualityFilterMode.ToString().ToLowerInvariant()}");
+                content.AppendLine($"Assessed files: {database.QualityAssessmentResults.Count}");
+                content.AppendLine($"Reviewed files: {database.QualityReviewCount}");
+                content.AppendLine($"Rejected files: {database.QualityRejectedCount}");
+                content.AppendLine($"Analysis errors: {database.QualityErrorCount}");
+                content.AppendLine();
+                content.AppendLine("Entries:");
+
+                foreach (var entry in database.QualityAssessmentResults)
+                {
+                    content.AppendLine($"{entry.FilePath} :: {entry.ToSummary()}");
+                }
+
+                File.WriteAllText(reportFilePath, content.ToString());
+                log.PrintDebug(tag, "Quality report written to: {0}", reportFilePath);
+            }
+            catch (Exception ex)
+            {
+                log.PrintError(tag, "Failed to write quality report: {0}", ex.Message);
             }
         }
 
@@ -248,7 +292,9 @@ namespace picmag
             log.PrintDebug(tag, "Source path: {0}", request.SourcePath);
             log.PrintDebug(tag, "Target path: {0}", request.TargetPath);
             log.PrintDebug(tag, "Delete source after import: {0}", request.DeleteSourceAfterImport);
-            HandleImportImages(databaseFullpath, request.SourcePath, request.TargetPath, request.Extensions, request.DeleteSourceAfterImport);
+            log.PrintDebug(tag, "Quality filter mode: {0}", request.QualityFilterMode);
+            log.PrintDebug(tag, "Write quality report: {0}", request.WriteQualityReport);
+            HandleImportImages(databaseFullpath, request.SourcePath, request.TargetPath, request.Extensions, request.DeleteSourceAfterImport, request.QualityFilterMode, request.WriteQualityReport);
         }
     }
 }

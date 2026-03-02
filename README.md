@@ -22,6 +22,9 @@ dotnet build
 # Apply sanity-check changes to sync DB <-> filesystem
 ./picmag --sanity-checks /home/user/picture_album --apply-changes
 
+# Import with quality analysis (warn mode keeps files, strict skips hard fails)
+./picmag -i /home/user/source_collection /home/user/picture_album --quality-filter warn --quality-report
+
 # Migrate legacy cache format to current format (.bak backup is created)
 ./picmag --migrate-cache /home/user/picture_album
 ```
@@ -32,6 +35,11 @@ dotnet build
   - Imports files from source to target.
   - Default extensions: `jpg,mp4`
   - Example custom extensions: `./picmag -i /src /dst jpg,png`
+  - `--quality-filter off|warn|strict`:
+    - `off` (default): no quality checks.
+    - `warn`: quality issues are reported, files are still imported.
+    - `strict`: hard quality failures are not imported.
+  - `--quality-report`: writes a detailed per-file quality report to `.picmag/quality-report-<timestamp>.log`.
 - `--sanity-checks <target path> [extensions] [--dry-run|--apply-changes]`
   - Compares files in target with DB entries.
   - `--dry-run` (default): report only, no DB writes.
@@ -120,6 +128,8 @@ dotnet deb
 - Import images and videos into date-based directories
 - Optional source cleanup via `--delete-source`
 - Import summary logs with imported / not imported file lists
+- Optional JPEG quality analysis with `--quality-filter` (`off|warn|strict`)
+- Optional per-file quality report via `--quality-report`
 - Sanity checks with dry-run (default) and apply mode
 - Cache backward compatibility + explicit cache migration command
 

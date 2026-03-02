@@ -33,17 +33,23 @@ namespace picmag
         private List<string> extensions;
         private MD5Cache md5Cache;
         private bool deleteSourceAfterImport;
+        private readonly QualityFilterMode qualityFilterMode;
         public uint InsertedImageCount { get; private set; }
         public int AlreadyImportedFileCounter { get; private set; }
         public uint DeletedSourceFileCount { get; private set; }
         public uint DeleteSourceFailedCount { get; private set; }
         public IReadOnlyList<string> ImportedFiles => importedFiles.AsReadOnly();
         public IReadOnlyList<string> NotImportedFiles => notImportedFiles.AsReadOnly();
+        public IReadOnlyList<QualityAssessmentResult> QualityAssessmentResults => qualityAssessmentResults.AsReadOnly();
+        public int QualityReviewCount { get; private set; }
+        public int QualityRejectedCount { get; private set; }
+        public int QualityErrorCount { get; private set; }
         public ImagesTable Images { get; private set; }
         private readonly List<string> importedFiles = new List<string>();
         private readonly List<string> notImportedFiles = new List<string>();
+        private readonly List<QualityAssessmentResult> qualityAssessmentResults = new List<QualityAssessmentResult>();
         private bool disposed;
-        public Database(string importDestinationPath, string databaseFilepath, CancellationTokenSource cts, ILog log, List<string> extensions, MD5Cache cache, bool deleteSourceAfterImport = false)
+        public Database(string importDestinationPath, string databaseFilepath, CancellationTokenSource cts, ILog log, List<string> extensions, MD5Cache cache, bool deleteSourceAfterImport = false, QualityFilterMode qualityFilterMode = QualityFilterMode.Off)
         {
             cancellationTokenSource = cts;
             sqliteConnection = new SqliteConnection(databaseFilepath);
@@ -55,6 +61,7 @@ namespace picmag
             this.extensions = extensions;
             md5Cache = cache;
             this.deleteSourceAfterImport = deleteSourceAfterImport;
+            this.qualityFilterMode = qualityFilterMode;
         }
         ~Database()
         {
@@ -117,9 +124,10 @@ namespace picmag
 
                         if ((extension.Equals("jpeg") || extension.Equals("jpg")) && extensions.Contains(extension))
                         {
+                            var notImportedBefore = notImportedFiles.Count;
                             imported = OnJpegExtension(item, utils);
-                            if (!imported)
-                                AddNotImported(item.FullName, "already imported or cache hit");
+                            if (!imported && notImportedFiles.Count == notImportedBefore)
+                                AddNotImported(item.FullName, "already imported, cache hit, or filtered by quality");
                         }
                         else if (extension.Equals("mp4") && extensions.Contains(extension))
                         {
@@ -309,6 +317,38 @@ namespace picmag
                 {
                     dirPath = utils.CreateDirectoryPathFrom(item.CreationTime);
                     creationTime = item.CreationTime;
+                }
+
+                if (qualityFilterMode != QualityFilterMode.Off)
+                {
+                    if (QualityAnalyzer.TryAnalyzeJpeg(item.FullName, out var assessment))
+                    {
+                        qualityAssessmentResults.Add(assessment);
+
+                        if (assessment.Verdict == QualityVerdict.Review)
+                            QualityReviewCount++;
+
+                        if (assessment.Verdict == QualityVerdict.Reject)
+                            QualityRejectedCount++;
+
+                        if (qualityFilterMode == QualityFilterMode.Strict && assessment.Verdict == QualityVerdict.Reject)
+                        {
+                            AddNotImported(item.FullName, "quality rejected: " + assessment.Reason);
+                            log.PrintInfo(tag, "Quality reject: {0} ({1})", item.FullName, assessment.Reason);
+                            return false;
+                        }
+
+                        if (assessment.Verdict == QualityVerdict.Review || assessment.Verdict == QualityVerdict.Reject)
+                        {
+                            log.PrintInfo(tag, "Quality review: {0} ({1})", item.FullName, assessment.Reason);
+                        }
+                    }
+                    else
+                    {
+                        QualityErrorCount++;
+                        qualityAssessmentResults.Add(assessment);
+                        log.PrintError(tag, "Quality analysis failed for {0}: {1}", item.FullName, assessment.Reason);
+                    }
                 }
 
                 string targetPath = Path.Combine(dirPath, fileName);

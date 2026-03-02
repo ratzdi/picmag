@@ -218,3 +218,17 @@ if grep -q "legacy/path.jpg legacy-md5" ./out/10/.picmag/cache.txt; then
 	echo "Expected migrated cache to use current format"
 	exit 1
 fi
+
+# Ingegration Test 11: quality filter warn mode with report
+
+rm -rf ./out/11
+../bin/Debug/netcoreapp8.0/picmag -i ./in/1 ./out/11 --quality-filter warn --quality-report
+
+quality_summary=$(find ./out/11/.picmag -maxdepth 1 -type f -name 'import-summary-*.log' | head -n1)
+test -n "$quality_summary"
+grep -q "Quality filter mode: warn" "$quality_summary"
+
+quality_report=$(find ./out/11/.picmag -maxdepth 1 -type f -name 'quality-report-*.log' | head -n1)
+test -n "$quality_report"
+grep -q "Mode: warn" "$quality_report"
+grep -q "Assessed files:" "$quality_report"

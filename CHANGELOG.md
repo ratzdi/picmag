@@ -6,11 +6,14 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
--
+- Import option `--quality-filter off|warn|strict` for JPEG quality screening during import.
+- Import option `--quality-report` to write a detailed quality analysis report to `.picmag/quality-report-<timestamp>.log`.
+- Unit tests for quality analysis behavior (`QualityAnalyzerTests`).
+- Integration test coverage for quality warn mode and report generation.
 
 ### Changed
 
--
+- Import summary now includes quality filter mode and quality counters (reviewed, rejected, analysis errors).
 
 ### Fixed
 
