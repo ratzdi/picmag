@@ -25,6 +25,13 @@ dotnet build
 # Import with quality analysis (warn mode keeps files, strict skips hard fails)
 ./picmag -i /home/user/source_collection /home/user/picture_album --quality-filter warn --quality-report
 
+# Review and optionally delete imported images from latest quality report
+./picmag --quality-review /home/user/picture_album --verdict reject --action list
+./picmag --quality-review /home/user/picture_album --verdict reject --action delete --apply-changes
+
+# Manual review loop with image window + CLI decision (delete/keep/quit)
+./picmag --quality-review /home/user/picture_album --verdict reject --action interactive --apply-changes
+
 # Migrate legacy cache format to current format (.bak backup is created)
 ./picmag --migrate-cache /home/user/picture_album
 ```
@@ -39,11 +46,19 @@ dotnet build
     - `off` (default): no quality checks.
     - `warn`: quality issues are reported, files are still imported.
     - `strict`: hard quality failures are not imported.
-  - `--quality-report`: writes a detailed per-file quality report to `.picmag/quality-report-<timestamp>.log`.
+  - Quality analysis metadata is stored per image in the database (`images.quality_*`).
+  - `--quality-report` (optional): writes export reports (`.log` and `.json`) to `.picmag/`.
 - `--sanity-checks <target path> [extensions] [--dry-run|--apply-changes]`
   - Compares files in target with DB entries.
   - `--dry-run` (default): report only, no DB writes.
   - `--apply-changes`: inserts missing DB entries and removes orphan DB entries.
+- `--quality-review <target path> [--verdict review|reject] [--action list|delete|interactive] [--dry-run|--apply-changes]`
+  - Uses quality metadata stored in the database (no report file required).
+  - `--action list` (default): lists matching imported files.
+  - `--action delete`: removes matching files and associated DB entries.
+  - `--action interactive`: opens each file in a simple viewer window and prompts for `delete` / `keep` / `quit` in CLI.
+  - `--dry-run` (default): no file or DB mutation.
+  - `--apply-changes`: applies delete action.
 - `--migrate-cache <target path>`
   - Rewrites `.picmag/cache.txt` to current format.
   - Creates `.picmag/cache.txt.bak` before replacing.
@@ -130,6 +145,7 @@ dotnet deb
 - Import summary logs with imported / not imported file lists
 - Optional JPEG quality analysis with `--quality-filter` (`off|warn|strict`)
 - Optional per-file quality report via `--quality-report`
+- Post-import review and cleanup via `--quality-review`
 - Sanity checks with dry-run (default) and apply mode
 - Cache backward compatibility + explicit cache migration command
 

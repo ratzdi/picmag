@@ -29,6 +29,19 @@ namespace picmag
 {
 public class ImagesTable
     {
+        public class QualityImageEntry
+        {
+            public string Path { get; set; }
+            public string QualityVerdict { get; set; }
+            public string QualityReason { get; set; }
+            public double? QualityContrast { get; set; }
+            public double? QualitySharpness { get; set; }
+            public double? QualityHighlights { get; set; }
+            public double? QualityShadows { get; set; }
+            public long? QualityAssessedAt { get; set; }
+            public string QualityModelVersion { get; set; }
+        }
+
         public static string TableName = "images";
         private SqliteConnection sqliteConnection;
         private ILog log;
@@ -37,6 +50,7 @@ public class ImagesTable
         {
             sqliteConnection = connection;
             this.log=log;
+            EnsureQualityColumns();
         }
         public int Create()
         {
@@ -45,19 +59,33 @@ public class ImagesTable
                 string createString = @"create table if not exists images(
                                 path            TEXT        NOT NULL,
                                 created         INTEGER     NOT NULL,
-                                md5             TEXT        NOT NULL
+                                md5             TEXT        NOT NULL,
+                                quality_verdict TEXT,
+                                quality_reason TEXT,
+                                quality_contrast REAL,
+                                quality_sharpness REAL,
+                                quality_highlights REAL,
+                                quality_shadows REAL,
+                                quality_assessed_at INTEGER,
+                                quality_model_version TEXT
                                 );";
                 command.CommandText = createString;
-                return command.ExecuteNonQuery();
+                var created = command.ExecuteNonQuery();
+                EnsureQualityColumns();
+                return created;
             }
         }
         public void Insert(string path, DateTime created, string md5)
         {
+            Insert(path, created, md5, null);
+        }
+
+        public void Insert(string path, DateTime created, string md5, QualityAssessmentResult qualityAssessment)
+        {
             using (IDbCommand dbcmd = sqliteConnection.CreateCommand())
             {
-                string sql;
                 SqliteParameter param;
-                sql = "insert into images (path, created, md5) values (?,?,?);";
+                var sql = "insert into images (path, created, md5, quality_verdict, quality_reason, quality_contrast, quality_sharpness, quality_highlights, quality_shadows, quality_assessed_at, quality_model_version) values (?,?,?,?,?,?,?,?,?,?,?);";
                 dbcmd.CommandText = sql;
                 param = new SqliteParameter("path", path);
                 dbcmd.Parameters.Add(param);
@@ -68,11 +96,45 @@ public class ImagesTable
                 dbcmd.Parameters.Add(param);
                 param = new SqliteParameter("md5", md5);
                 dbcmd.Parameters.Add(param);
+
+                AddQualityParameters(dbcmd, qualityAssessment);
                 if (dbcmd.ExecuteNonQuery() > 0)
                 {
                     log.PrintDebug(tag, "Image inserted: " + path);
                 }
             }
+        }
+
+        public List<QualityImageEntry> GetByQualityVerdict(QualityReviewVerdict verdict)
+        {
+            var result = new List<QualityImageEntry>();
+            using (var dbcmd = sqliteConnection.CreateCommand())
+            {
+                dbcmd.CommandText = "select path, quality_verdict, quality_reason, quality_contrast, quality_sharpness, quality_highlights, quality_shadows, quality_assessed_at, quality_model_version from images where lower(quality_verdict) = ? order by path;";
+                dbcmd.CommandType = CommandType.Text;
+                dbcmd.Parameters.Add(new SqliteParameter("quality_verdict", verdict.ToString().ToLowerInvariant()));
+
+                using (var reader = dbcmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        result.Add(new QualityImageEntry
+                        {
+                            Path = reader["path"].ToString(),
+                            QualityVerdict = reader["quality_verdict"].ToString(),
+                            QualityReason = reader["quality_reason"] is DBNull ? null : reader["quality_reason"].ToString(),
+                            QualityContrast = reader["quality_contrast"] is DBNull ? (double?)null : Convert.ToDouble(reader["quality_contrast"]),
+                            QualitySharpness = reader["quality_sharpness"] is DBNull ? (double?)null : Convert.ToDouble(reader["quality_sharpness"]),
+                            QualityHighlights = reader["quality_highlights"] is DBNull ? (double?)null : Convert.ToDouble(reader["quality_highlights"]),
+                            QualityShadows = reader["quality_shadows"] is DBNull ? (double?)null : Convert.ToDouble(reader["quality_shadows"]),
+                            QualityAssessedAt = reader["quality_assessed_at"] is DBNull ? (long?)null : Convert.ToInt64(reader["quality_assessed_at"]),
+                            QualityModelVersion = reader["quality_model_version"] is DBNull ? null : reader["quality_model_version"].ToString()
+                        });
+                    }
+                }
+            }
+
+            return result;
         }
         public void Update(string path, DateTime created, byte[] md5)
         {
@@ -189,6 +251,90 @@ public class ImagesTable
                 dbcmd.Parameters.Add(param);
                 return dbcmd.ExecuteNonQuery();
             }
+        }
+
+        private void EnsureQualityColumns()
+        {
+            if (!TableExists())
+                return;
+
+            var existingColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var dbcmd = sqliteConnection.CreateCommand())
+            {
+                dbcmd.CommandText = "pragma table_info(images);";
+                using (var reader = dbcmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        existingColumns.Add(reader["name"].ToString());
+                    }
+                }
+            }
+
+            AddColumnIfMissing(existingColumns, "quality_verdict", "TEXT");
+            AddColumnIfMissing(existingColumns, "quality_reason", "TEXT");
+            AddColumnIfMissing(existingColumns, "quality_contrast", "REAL");
+            AddColumnIfMissing(existingColumns, "quality_sharpness", "REAL");
+            AddColumnIfMissing(existingColumns, "quality_highlights", "REAL");
+            AddColumnIfMissing(existingColumns, "quality_shadows", "REAL");
+            AddColumnIfMissing(existingColumns, "quality_assessed_at", "INTEGER");
+            AddColumnIfMissing(existingColumns, "quality_model_version", "TEXT");
+
+            using (var dbcmd = sqliteConnection.CreateCommand())
+            {
+                dbcmd.CommandText = "create index if not exists idx_images_quality_verdict on images(quality_verdict);";
+                dbcmd.ExecuteNonQuery();
+            }
+        }
+
+        private bool TableExists()
+        {
+            using (var dbcmd = sqliteConnection.CreateCommand())
+            {
+                dbcmd.CommandText = "select 1 from sqlite_master where type = 'table' and name = 'images' limit 1;";
+                using (var reader = dbcmd.ExecuteReader())
+                {
+                    return reader.Read();
+                }
+            }
+        }
+
+        private void AddColumnIfMissing(HashSet<string> existingColumns, string columnName, string columnType)
+        {
+            if (existingColumns.Contains(columnName))
+                return;
+
+            using (var dbcmd = sqliteConnection.CreateCommand())
+            {
+                dbcmd.CommandText = $"alter table images add column {columnName} {columnType};";
+                dbcmd.ExecuteNonQuery();
+            }
+            existingColumns.Add(columnName);
+        }
+
+        private void AddQualityParameters(IDbCommand dbcmd, QualityAssessmentResult qualityAssessment)
+        {
+            if (qualityAssessment == null)
+            {
+                dbcmd.Parameters.Add(new SqliteParameter("quality_verdict", DBNull.Value));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_reason", DBNull.Value));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_contrast", DBNull.Value));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_sharpness", DBNull.Value));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_highlights", DBNull.Value));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_shadows", DBNull.Value));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_assessed_at", DBNull.Value));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_model_version", DBNull.Value));
+                return;
+            }
+
+            dbcmd.Parameters.Add(new SqliteParameter("quality_verdict", qualityAssessment.Verdict.ToString().ToLowerInvariant()));
+            dbcmd.Parameters.Add(new SqliteParameter("quality_reason", string.IsNullOrWhiteSpace(qualityAssessment.Reason) ? "none" : qualityAssessment.Reason));
+            dbcmd.Parameters.Add(new SqliteParameter("quality_contrast", qualityAssessment.Contrast));
+            dbcmd.Parameters.Add(new SqliteParameter("quality_sharpness", qualityAssessment.Sharpness));
+            dbcmd.Parameters.Add(new SqliteParameter("quality_highlights", qualityAssessment.ClippedHighlightsRatio));
+            dbcmd.Parameters.Add(new SqliteParameter("quality_shadows", qualityAssessment.ClippedShadowsRatio));
+            dbcmd.Parameters.Add(new SqliteParameter("quality_assessed_at", DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+            dbcmd.Parameters.Add(new SqliteParameter("quality_model_version", "quality-v1"));
         }
     }
 }

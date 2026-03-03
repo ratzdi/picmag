@@ -51,6 +51,7 @@ namespace picmag
             Console.WriteLine("\t   Quality filter: off (default), warn (flag for review), strict (skip hard fails). --quality-report writes a per-file quality report.");
             Console.WriteLine("\t--sanity-checks <target path> [extensions] [--dry-run|--apply-changes] - Check DB/filesystem consistency and write report (default: --dry-run, extensions: jpg,mp4)");
             Console.WriteLine("\t--migrate-cache <target path> - Migrate .picmag/cache.txt to current format and create .bak backup");
+            Console.WriteLine("\t--quality-review <target path> [--verdict review|reject] [--action list|delete|interactive] [--dry-run|--apply-changes] - Review imported files from DB quality metadata");
             Console.WriteLine("\t--version, -v - Print application version and git short revision");
             Console.WriteLine("\t-h help");
         }

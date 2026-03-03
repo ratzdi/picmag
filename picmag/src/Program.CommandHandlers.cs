@@ -22,8 +22,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -151,15 +154,166 @@ namespace picmag
 
                 foreach (var entry in database.QualityAssessmentResults)
                 {
-                    content.AppendLine($"{entry.FilePath} :: {entry.ToSummary()}");
+                    content.AppendLine($"{entry.SourcePath} :: {entry.ToSummary()}");
                 }
 
                 File.WriteAllText(reportFilePath, content.ToString());
                 log.PrintDebug(tag, "Quality report written to: {0}", reportFilePath);
+
+                var jsonReportFilePath = Path.ChangeExtension(reportFilePath, ".json");
+                var serializerOptions = new JsonSerializerOptions { WriteIndented = true };
+                serializerOptions.Converters.Add(new JsonStringEnumConverter());
+                File.WriteAllText(jsonReportFilePath, JsonSerializer.Serialize(database.QualityAssessmentResults, serializerOptions));
+                log.PrintDebug(tag, "Quality report JSON written to: {0}", jsonReportFilePath);
             }
             catch (Exception ex)
             {
                 log.PrintError(tag, "Failed to write quality report: {0}", ex.Message);
+            }
+        }
+
+        void HandleQualityReview(string targetPath, QualityReviewVerdict verdict, QualityReviewAction action, bool dryRun)
+        {
+            var picmagDirectory = Path.Combine(targetPath, ".picmag");
+            Directory.CreateDirectory(picmagDirectory);
+
+            string databaseFullpath = Path.Combine(targetPath, relDatabaseFilepath);
+            if (!File.Exists(databaseFullpath))
+            {
+                log.PrintError(tag, "Database not found: {0}", databaseFullpath);
+                return;
+            }
+
+            using var databaseCts = new CancellationTokenSource();
+            using var md5Cache = new MD5Cache(Path.Combine(targetPath, ".picmag", "cache.txt"), log);
+            using var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseCts, log, new List<string> { "jpg", "mp4" }, md5Cache);
+
+            var candidates = database.Images.GetByQualityVerdict(verdict);
+
+            int deletedFiles = 0;
+            int removedDbEntries = 0;
+            int missingFiles = 0;
+            int keptFiles = 0;
+            bool quitRequested = false;
+
+            foreach (var candidate in candidates)
+            {
+                var relativePath = candidate.Path.Replace('\\', '/');
+                var absolutePath = Path.Combine(targetPath, relativePath);
+
+                if (action == QualityReviewAction.List)
+                {
+                    log.PrintInfo(tag, "Quality candidate: {0} ({1})", relativePath, candidate.QualityReason ?? "n/a");
+                    continue;
+                }
+
+                if (action == QualityReviewAction.Delete)
+                {
+                    ProcessDeleteDecision(database, relativePath, absolutePath, dryRun, ref deletedFiles, ref removedDbEntries, ref missingFiles);
+                    continue;
+                }
+
+                if (action == QualityReviewAction.Interactive)
+                {
+                    TryOpenImageWindow(absolutePath);
+
+                    Console.WriteLine();
+                    Console.WriteLine("Quality review candidate: {0}", relativePath);
+                    Console.WriteLine("Reason: {0}", candidate.QualityReason ?? "n/a");
+                    Console.WriteLine("Decision [d=delete, k=keep, q=quit]: ");
+                    var decision = (Console.ReadLine() ?? string.Empty).Trim().ToLowerInvariant();
+
+                    if (decision == "q")
+                    {
+                        quitRequested = true;
+                        break;
+                    }
+
+                    if (decision == "d")
+                    {
+                        ProcessDeleteDecision(database, relativePath, absolutePath, dryRun, ref deletedFiles, ref removedDbEntries, ref missingFiles);
+                    }
+                    else
+                    {
+                        keptFiles++;
+                        log.PrintInfo(tag, "Kept file: {0}", relativePath);
+                    }
+                }
+            }
+
+            var reviewReportPath = Path.Combine(picmagDirectory, $"quality-review-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+            var report = new StringBuilder();
+            report.AppendLine("Quality Review Report");
+            report.AppendLine($"Generated at: {DateTime.Now:O}");
+            report.AppendLine($"Source database: {databaseFullpath}");
+            report.AppendLine($"verdict: {verdict.ToString().ToLowerInvariant()}");
+            report.AppendLine($"action: {action.ToString().ToLowerInvariant()}");
+            report.AppendLine($"mode: {(dryRun ? "dry-run" : "apply-changes")}");
+            report.AppendLine($"matching_entries: {candidates.Count}");
+            report.AppendLine($"deleted_files: {deletedFiles}");
+            report.AppendLine($"removed_db_entries: {removedDbEntries}");
+            report.AppendLine($"missing_files: {missingFiles}");
+            report.AppendLine($"kept_files: {keptFiles}");
+            report.AppendLine($"quit_requested: {quitRequested}");
+            report.AppendLine();
+            report.AppendLine("Entries:");
+
+            foreach (var candidate in candidates)
+            {
+                report.AppendLine($"{candidate.Path} :: verdict={candidate.QualityVerdict}, reason={candidate.QualityReason ?? "n/a"}, contrast={candidate.QualityContrast}, sharpness={candidate.QualitySharpness}");
+            }
+
+            File.WriteAllText(reviewReportPath, report.ToString());
+            log.PrintDebug(tag, "Quality review report written to: {0}", reviewReportPath);
+        }
+
+        void ProcessDeleteDecision(Database database, string relativePath, string absolutePath, bool dryRun, ref int deletedFiles, ref int removedDbEntries, ref int missingFiles)
+        {
+            if (dryRun)
+            {
+                log.PrintInfo(tag, "Dry-run delete candidate: {0}", relativePath);
+                return;
+            }
+
+            try
+            {
+                if (File.Exists(absolutePath))
+                {
+                    File.Delete(absolutePath);
+                    deletedFiles++;
+                    log.PrintInfo(tag, "Deleted file: {0}", relativePath);
+                }
+                else
+                {
+                    missingFiles++;
+                    log.PrintInfo(tag, "File already missing: {0}", relativePath);
+                }
+
+                removedDbEntries += database.Images.RemoveByPath(relativePath);
+            }
+            catch (Exception ex)
+            {
+                log.PrintError(tag, "Failed to process delete for {0}: {1}", relativePath, ex.Message);
+            }
+        }
+
+        void TryOpenImageWindow(string absolutePath)
+        {
+            try
+            {
+                if (!File.Exists(absolutePath))
+                    return;
+
+                var process = new Process();
+                process.StartInfo.FileName = "xdg-open";
+                process.StartInfo.Arguments = "\"" + absolutePath + "\"";
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+            }
+            catch (Exception ex)
+            {
+                log.PrintDebug(tag, "Could not open image window for {0}: {1}", absolutePath, ex.Message);
             }
         }
 
@@ -274,6 +428,10 @@ namespace picmag
 
                 case CommandType.MigrateCache:
                     HandleMigrateCache(request.TargetPath);
+                    break;
+
+                case CommandType.QualityReview:
+                    HandleQualityReview(request.TargetPath, request.QualityReviewVerdict, request.QualityReviewAction, request.DryRun);
                     break;
             }
         }

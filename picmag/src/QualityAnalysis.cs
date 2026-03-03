@@ -21,9 +21,29 @@ namespace picmag
         Error
     }
 
+    public enum QualityReviewVerdict
+    {
+        Review,
+        Reject
+    }
+
+    public enum QualityReviewAction
+    {
+        List,
+        Delete,
+        Interactive
+    }
+
     public class QualityAssessmentResult
     {
-        public string FilePath { get; set; } = string.Empty;
+        public string SourcePath { get; set; } = string.Empty;
+        public string FilePath
+        {
+            get => SourcePath;
+            set => SourcePath = value;
+        }
+        public string TargetRelativePath { get; set; } = string.Empty;
+        public bool WasImported { get; set; }
         public QualityVerdict Verdict { get; set; }
         public double ClippedHighlightsRatio { get; set; }
         public double ClippedShadowsRatio { get; set; }
@@ -34,8 +54,10 @@ namespace picmag
         public string ToSummary()
         {
             return string.Format(CultureInfo.InvariantCulture,
-                "verdict={0}, highlights={1:P1}, shadows={2:P1}, contrast={3:F3}, sharpness={4:F1}, reason={5}",
+                "verdict={0}, imported={1}, target={2}, highlights={3:P1}, shadows={4:P1}, contrast={5:F3}, sharpness={6:F1}, reason={7}",
                 Verdict,
+                WasImported,
+                string.IsNullOrWhiteSpace(TargetRelativePath) ? "n/a" : TargetRelativePath,
                 ClippedHighlightsRatio,
                 ClippedShadowsRatio,
                 Contrast,
@@ -48,7 +70,7 @@ namespace picmag
     {
         public static bool TryAnalyzeJpeg(string filePath, out QualityAssessmentResult result)
         {
-            result = new QualityAssessmentResult { FilePath = filePath, Verdict = QualityVerdict.Error, Reason = "analysis failed" };
+            result = new QualityAssessmentResult { SourcePath = filePath, Verdict = QualityVerdict.Error, Reason = "analysis failed" };
             try
             {
                 using var image = Image.Load<Rgb24>(filePath);
@@ -154,7 +176,7 @@ namespace picmag
 
                 result = new QualityAssessmentResult
                 {
-                    FilePath = filePath,
+                    SourcePath = filePath,
                     ClippedHighlightsRatio = clippedHighlightsRatio,
                     ClippedShadowsRatio = clippedShadowsRatio,
                     Contrast = contrast,

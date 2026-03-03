@@ -8,12 +8,17 @@ All notable changes to this project are documented in this file.
 
 - Import option `--quality-filter off|warn|strict` for JPEG quality screening during import.
 - Import option `--quality-report` to write a detailed quality analysis report to `.picmag/quality-report-<timestamp>.log`.
+- Command `--quality-review` for post-import quality review with list/delete actions and dry-run/apply modes.
+- Machine-readable quality report output (`.picmag/quality-report-<timestamp>.json`) for automated review workflows.
+- Interactive post-import mode (`--quality-review --action interactive`) to open each candidate image and decide via CLI (`delete` / `keep` / `quit`).
 - Unit tests for quality analysis behavior (`QualityAnalyzerTests`).
 - Integration test coverage for quality warn mode and report generation.
 
 ### Changed
 
 - Import summary now includes quality filter mode and quality counters (reviewed, rejected, analysis errors).
+- Quality assessment entries now include source path, target path, and import status for actionable cleanup.
+- Quality review now reads quality metadata from DB (`images.quality_*`) instead of requiring JSON reports; JSON remains optional export.
 
 ### Fixed
 

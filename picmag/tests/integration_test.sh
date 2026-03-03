@@ -232,3 +232,26 @@ quality_report=$(find ./out/11/.picmag -maxdepth 1 -type f -name 'quality-report
 test -n "$quality_report"
 grep -q "Mode: warn" "$quality_report"
 grep -q "Assessed files:" "$quality_report"
+
+# Ingegration Test 12: quality review list action from latest report
+
+../bin/Debug/netcoreapp8.0/picmag --quality-review ./out/11 --verdict reject --action list
+
+db_reject_count=$(sqlite3 ./out/11/.picmag/database.sqlite "select count(*) from images where quality_verdict = 'reject';")
+test "$db_reject_count" -gt 0
+
+review_report=$(find ./out/11/.picmag -maxdepth 1 -type f -name 'quality-review-*.log' | head -n1)
+test -n "$review_report"
+grep -q "action: list" "$review_report"
+grep -q "verdict: reject" "$review_report"
+
+# Ingegration Test 13: quality review delete action apply changes
+
+rm -rf ./out/12
+../bin/Debug/netcoreapp8.0/picmag -i ./in/1 ./out/12 --quality-filter warn
+
+count_before_delete=$(sqlite3 ./out/12/.picmag/database.sqlite "select count(*) from images;")
+../bin/Debug/netcoreapp8.0/picmag --quality-review ./out/12 --verdict reject --action delete --apply-changes
+count_after_delete=$(sqlite3 ./out/12/.picmag/database.sqlite "select count(*) from images;")
+
+test "$count_after_delete" -lt "$count_before_delete"
