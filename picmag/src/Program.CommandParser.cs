@@ -35,7 +35,8 @@ namespace picmag
             Import,
             SanityChecks,
             MigrateCache,
-            QualityReview
+            QualityReview,
+            QualityScanExisting
         }
 
         private class CommandRequest
@@ -52,6 +53,7 @@ namespace picmag
             public bool WriteQualityReport { get; set; }
             public QualityReviewVerdict QualityReviewVerdict { get; set; } = QualityReviewVerdict.Review;
             public QualityReviewAction QualityReviewAction { get; set; } = QualityReviewAction.List;
+            public bool QualityScanOnlyMissing { get; set; } = true;
         }
 
         void Start(string[] args)
@@ -115,6 +117,9 @@ namespace picmag
                 case "--quality-review":
                     return TryParseQualityReviewCommand(args, out request);
 
+                case "--quality-scan-existing":
+                    return TryParseQualityScanExistingCommand(args, out request);
+
                 default:
                     return false;
             }
@@ -166,6 +171,48 @@ namespace picmag
                 else if (args[i] == "--dry-run")
                 {
                     parsed.DryRun = true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            request = parsed;
+            return true;
+        }
+
+        bool TryParseQualityScanExistingCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length < 2)
+                return false;
+
+            var parsed = new CommandRequest
+            {
+                Type = CommandType.QualityScanExisting,
+                TargetPath = args[1],
+                DryRun = true,
+                QualityScanOnlyMissing = true
+            };
+
+            for (int i = 2; i < args.Length; i++)
+            {
+                if (args[i] == "--apply-changes")
+                {
+                    parsed.DryRun = false;
+                }
+                else if (args[i] == "--dry-run")
+                {
+                    parsed.DryRun = true;
+                }
+                else if (args[i] == "--all")
+                {
+                    parsed.QualityScanOnlyMissing = false;
+                }
+                else if (args[i] == "--only-missing")
+                {
+                    parsed.QualityScanOnlyMissing = true;
                 }
                 else
                 {

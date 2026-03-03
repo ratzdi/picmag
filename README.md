@@ -29,6 +29,9 @@ dotnet build
 ./picmag --quality-review /home/user/picture_album --verdict reject --action list
 ./picmag --quality-review /home/user/picture_album --verdict reject --action delete --apply-changes
 
+# Analyze already imported JPG/JPEG files and persist quality metadata to DB
+./picmag --quality-scan-existing /home/user/picture_album --apply-changes
+
 # Manual review loop with image window + CLI decision (delete/keep/quit)
 ./picmag --quality-review /home/user/picture_album --verdict reject --action interactive --apply-changes
 
@@ -59,6 +62,12 @@ dotnet build
   - `--action interactive`: opens each file in a simple viewer window and prompts for `delete` / `keep` / `quit` in CLI.
   - `--dry-run` (default): no file or DB mutation.
   - `--apply-changes`: applies delete action.
+- `--quality-scan-existing <target path> [--only-missing|--all] [--dry-run|--apply-changes]`
+  - Scans already imported JPG/JPEG files from DB entries and computes quality metadata.
+  - `--only-missing` (default): scans only rows without `quality_verdict`.
+  - `--all`: rescans all imported JPG/JPEG rows.
+  - `--dry-run` (default): performs analysis and writes report without DB updates.
+  - `--apply-changes`: writes quality metadata back to DB (`quality_*` columns).
 - `--migrate-cache <target path>`
   - Rewrites `.picmag/cache.txt` to current format.
   - Creates `.picmag/cache.txt.bak` before replacing.

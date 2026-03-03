@@ -136,6 +136,57 @@ public class ImagesTable
 
             return result;
         }
+
+        public List<string> GetJpegPathsForQualityScan(bool onlyMissingMetadata)
+        {
+            var result = new List<string>();
+            using (var dbcmd = sqliteConnection.CreateCommand())
+            {
+                if (onlyMissingMetadata)
+                {
+                    dbcmd.CommandText = "select path from images where (lower(path) like '%.jpg' or lower(path) like '%.jpeg') and (quality_verdict is null or trim(quality_verdict) = '') order by path;";
+                }
+                else
+                {
+                    dbcmd.CommandText = "select path from images where (lower(path) like '%.jpg' or lower(path) like '%.jpeg') order by path;";
+                }
+
+                dbcmd.CommandType = CommandType.Text;
+                using (var reader = dbcmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        result.Add(reader["path"].ToString());
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        public int UpdateQualityMetadata(string path, QualityAssessmentResult qualityAssessment)
+        {
+            if (qualityAssessment == null)
+                throw new ArgumentNullException(nameof(qualityAssessment));
+
+            using (var dbcmd = sqliteConnection.CreateCommand())
+            {
+                dbcmd.CommandType = CommandType.Text;
+                dbcmd.CommandText = "update images set quality_verdict = ?, quality_reason = ?, quality_contrast = ?, quality_sharpness = ?, quality_highlights = ?, quality_shadows = ?, quality_assessed_at = ?, quality_model_version = ? where path = ?;";
+                dbcmd.Parameters.Add(new SqliteParameter("quality_verdict", qualityAssessment.Verdict.ToString().ToLowerInvariant()));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_reason", string.IsNullOrWhiteSpace(qualityAssessment.Reason) ? "none" : qualityAssessment.Reason));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_contrast", qualityAssessment.Contrast));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_sharpness", qualityAssessment.Sharpness));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_highlights", qualityAssessment.ClippedHighlightsRatio));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_shadows", qualityAssessment.ClippedShadowsRatio));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_assessed_at", DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+                dbcmd.Parameters.Add(new SqliteParameter("quality_model_version", "quality-v1"));
+                dbcmd.Parameters.Add(new SqliteParameter("path", path));
+
+                return dbcmd.ExecuteNonQuery();
+            }
+        }
+
         public void Update(string path, DateTime created, byte[] md5)
         {
             using (IDbCommand dbcmd = sqliteConnection.CreateCommand())

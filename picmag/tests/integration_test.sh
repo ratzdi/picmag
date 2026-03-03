@@ -255,3 +255,32 @@ count_before_delete=$(sqlite3 ./out/12/.picmag/database.sqlite "select count(*) 
 count_after_delete=$(sqlite3 ./out/12/.picmag/database.sqlite "select count(*) from images;")
 
 test "$count_after_delete" -lt "$count_before_delete"
+
+# Ingegration Test 14: quality scan existing dry-run does not mutate DB
+
+rm -rf ./out/13
+../bin/Debug/netcoreapp8.0/picmag -i ./in/1 ./out/13
+
+quality_count_before_scan=$(sqlite3 ./out/13/.picmag/database.sqlite "select count(*) from images where quality_verdict is not null and trim(quality_verdict) != '';" )
+test "$quality_count_before_scan" -eq 0
+
+../bin/Debug/netcoreapp8.0/picmag --quality-scan-existing ./out/13
+
+quality_count_after_dry_scan=$(sqlite3 ./out/13/.picmag/database.sqlite "select count(*) from images where quality_verdict is not null and trim(quality_verdict) != '';" )
+test "$quality_count_after_dry_scan" -eq 0
+
+scan_report_dry=$(find ./out/13/.picmag -maxdepth 1 -type f -name 'quality-scan-existing-*.log' | head -n1)
+test -n "$scan_report_dry"
+grep -q "mode: dry-run" "$scan_report_dry"
+grep -q "scan_scope: only-missing" "$scan_report_dry"
+
+# Ingegration Test 15: quality scan existing apply writes quality metadata
+
+../bin/Debug/netcoreapp8.0/picmag --quality-scan-existing ./out/13 --apply-changes
+
+quality_count_after_apply_scan=$(sqlite3 ./out/13/.picmag/database.sqlite "select count(*) from images where quality_verdict is not null and trim(quality_verdict) != '';" )
+test "$quality_count_after_apply_scan" -gt 0
+
+scan_report_apply=$(ls -1t ./out/13/.picmag/quality-scan-existing-*.log | head -n1)
+test -n "$scan_report_apply"
+grep -q "mode: apply-changes" "$scan_report_apply"

@@ -84,7 +84,7 @@ namespace picmag
                     return false;
                 }
 
-                var luminance = new float[sampleWidth * sampleHeight];
+                var luminance = new byte[sampleWidth * sampleHeight];
                 int index = 0;
                 double sum = 0;
                 double sumSquares = 0;
@@ -99,14 +99,15 @@ namespace picmag
                         for (int x = 0; x < accessor.Width; x += step)
                         {
                             var pixel = row[x];
-                            float value = (float)(0.2126 * pixel.R + 0.7152 * pixel.G + 0.0722 * pixel.B);
+                            int valueInt = ((54 * pixel.R) + (183 * pixel.G) + (19 * pixel.B)) >> 8;
+                            byte value = (byte)valueInt;
                             luminance[index++] = value;
 
                             sum += value;
                             sumSquares += value * value;
-                            if (value <= 5f)
+                            if (value <= 5)
                                 shadows++;
-                            if (value >= 250f)
+                            if (value >= 250)
                                 highlights++;
                         }
                     }
@@ -133,13 +134,13 @@ namespace picmag
                         for (int x = 1; x < sampleWidth - 1; x++)
                         {
                             int centerIndex = y * sampleWidth + x;
-                            float center = luminance[centerIndex];
-                            float left = luminance[centerIndex - 1];
-                            float right = luminance[centerIndex + 1];
-                            float up = luminance[centerIndex - sampleWidth];
-                            float down = luminance[centerIndex + sampleWidth];
+                            int center = luminance[centerIndex];
+                            int left = luminance[centerIndex - 1];
+                            int right = luminance[centerIndex + 1];
+                            int up = luminance[centerIndex - sampleWidth];
+                            int down = luminance[centerIndex + sampleWidth];
 
-                            double laplacian = (4 * center) - left - right - up - down;
+                            int laplacian = (4 * center) - left - right - up - down;
                             laplacianEnergy += laplacian * laplacian;
                             laplacianCount++;
                         }

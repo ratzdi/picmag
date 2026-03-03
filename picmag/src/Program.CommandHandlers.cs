@@ -267,6 +267,164 @@ namespace picmag
             log.PrintDebug(tag, "Quality review report written to: {0}", reviewReportPath);
         }
 
+        void HandleQualityScanExisting(string targetPath, bool onlyMissing, bool dryRun)
+        {
+            var picmagDirectory = Path.Combine(targetPath, ".picmag");
+            Directory.CreateDirectory(picmagDirectory);
+
+            string databaseFullpath = Path.Combine(targetPath, relDatabaseFilepath);
+            if (!File.Exists(databaseFullpath))
+            {
+                log.PrintError(tag, "Database not found: {0}", databaseFullpath);
+                return;
+            }
+
+            using var databaseCts = new CancellationTokenSource();
+            using var md5Cache = new MD5Cache(Path.Combine(targetPath, ".picmag", "cache.txt"), log);
+            using var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseCts, log, new List<string> { "jpg", "mp4" }, md5Cache);
+
+            var candidates = database.Images.GetJpegPathsForQualityScan(onlyMissing);
+
+            if (candidates.Count == 0)
+            {
+                log.PrintInfo(tag, "Quality scan existing: no matching JPG/JPEG entries found.");
+            }
+
+            var maxDegreeOfParallelism = Math.Min(Math.Max(Environment.ProcessorCount, 1), 8);
+            log.PrintInfo(tag, "Quality scan existing: processing {0} candidates with up to {1} workers.", candidates.Count, maxDegreeOfParallelism);
+
+            var progressStopwatch = Stopwatch.StartNew();
+            var lastProgressOutput = TimeSpan.Zero;
+            var progressLock = new object();
+            var analysisResults = new List<(string RelativePath, QualityAssessmentResult Assessment)>(candidates.Count);
+            var analysisResultsLock = new object();
+
+            int assessed = 0;
+            int errors = 0;
+            int rejected = 0;
+            int review = 0;
+            int accepted = 0;
+            int missingFiles = 0;
+            int updatedRows = 0;
+            var totalCandidates = candidates.Count;
+
+            Parallel.ForEach(candidates, new ParallelOptions { MaxDegreeOfParallelism = maxDegreeOfParallelism }, relativePath =>
+            {
+                var absolutePath = Path.Combine(targetPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                QualityAssessmentResult assessment;
+
+                if (!File.Exists(absolutePath))
+                {
+                    Interlocked.Increment(ref missingFiles);
+                    assessment = new QualityAssessmentResult
+                    {
+                        SourcePath = absolutePath,
+                        TargetRelativePath = relativePath,
+                        WasImported = true,
+                        Verdict = QualityVerdict.Error,
+                        Reason = "file missing"
+                    };
+                }
+                else if (!QualityAnalyzer.TryAnalyzeJpeg(absolutePath, out assessment))
+                {
+                    Interlocked.Increment(ref errors);
+                    assessment.TargetRelativePath = relativePath;
+                    assessment.WasImported = true;
+                }
+                else
+                {
+                    assessment.TargetRelativePath = relativePath;
+                    assessment.WasImported = true;
+                    switch (assessment.Verdict)
+                    {
+                        case QualityVerdict.Accept:
+                            Interlocked.Increment(ref accepted);
+                            break;
+                        case QualityVerdict.Review:
+                            Interlocked.Increment(ref review);
+                            break;
+                        case QualityVerdict.Reject:
+                            Interlocked.Increment(ref rejected);
+                            break;
+                        case QualityVerdict.Error:
+                            Interlocked.Increment(ref errors);
+                            break;
+                    }
+                }
+
+                lock (analysisResultsLock)
+                {
+                    analysisResults.Add((relativePath, assessment));
+                }
+
+                var currentAssessed = Interlocked.Increment(ref assessed);
+                var shouldRenderProgress = (currentAssessed % 25 == 0) || currentAssessed == totalCandidates;
+                if (!shouldRenderProgress)
+                {
+                    lock (progressLock)
+                    {
+                        shouldRenderProgress = (progressStopwatch.Elapsed - lastProgressOutput).TotalSeconds >= 1.0;
+                    }
+                }
+
+                if (shouldRenderProgress && totalCandidates > 0)
+                {
+                    lock (progressLock)
+                    {
+                        var percent = (int)Math.Round((currentAssessed * 100.0) / totalCandidates);
+                        Console.Write("\rQuality scan progress: {0,3}% ({1}/{2})", percent, currentAssessed, totalCandidates);
+                        lastProgressOutput = progressStopwatch.Elapsed;
+                    }
+                }
+            });
+
+            if (!dryRun)
+            {
+                foreach (var analysisResult in analysisResults)
+                {
+                    try
+                    {
+                        updatedRows += database.Images.UpdateQualityMetadata(analysisResult.RelativePath, analysisResult.Assessment);
+                    }
+                    catch (Exception ex)
+                    {
+                        Interlocked.Increment(ref errors);
+                        log.PrintError(tag, "Failed to update quality metadata for {0}: {1}", analysisResult.RelativePath, ex.Message);
+                    }
+                }
+            }
+
+            if (candidates.Count > 0)
+                Console.WriteLine();
+
+            var scanReportPath = Path.Combine(picmagDirectory, $"quality-scan-existing-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+            var report = new StringBuilder();
+            report.AppendLine("Quality Scan Existing Report");
+            report.AppendLine($"Generated at: {DateTime.Now:O}");
+            report.AppendLine($"Source database: {databaseFullpath}");
+            report.AppendLine($"scan_scope: {(onlyMissing ? "only-missing" : "all")}");
+            report.AppendLine($"mode: {(dryRun ? "dry-run" : "apply-changes")}");
+            report.AppendLine($"candidates: {candidates.Count}");
+            report.AppendLine($"assessed: {assessed}");
+            report.AppendLine($"accepted: {accepted}");
+            report.AppendLine($"review: {review}");
+            report.AppendLine($"rejected: {rejected}");
+            report.AppendLine($"errors: {errors}");
+            report.AppendLine($"missing_files: {missingFiles}");
+            report.AppendLine($"updated_rows: {updatedRows}");
+
+            File.WriteAllText(scanReportPath, report.ToString());
+            log.PrintDebug(tag, "Quality scan report written to: {0}", scanReportPath);
+            log.PrintInfo(tag, "Quality scan existing completed. candidates={0}, assessed={1}, accepted={2}, review={3}, rejected={4}, errors={5}, mode={6}",
+                candidates.Count,
+                assessed,
+                accepted,
+                review,
+                rejected,
+                errors,
+                dryRun ? "dry-run" : "apply-changes");
+        }
+
         void ProcessDeleteDecision(Database database, string relativePath, string absolutePath, bool dryRun, ref int deletedFiles, ref int removedDbEntries, ref int missingFiles)
         {
             if (dryRun)
@@ -432,6 +590,10 @@ namespace picmag
 
                 case CommandType.QualityReview:
                     HandleQualityReview(request.TargetPath, request.QualityReviewVerdict, request.QualityReviewAction, request.DryRun);
+                    break;
+
+                case CommandType.QualityScanExisting:
+                    HandleQualityScanExisting(request.TargetPath, request.QualityScanOnlyMissing, request.DryRun);
                     break;
             }
         }
