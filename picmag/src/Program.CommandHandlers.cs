@@ -290,7 +290,7 @@ namespace picmag
                 log.PrintInfo(tag, "Quality scan existing: no matching JPG/JPEG entries found.");
             }
 
-            var maxDegreeOfParallelism = Math.Min(Math.Max(Environment.ProcessorCount, 1), 8);
+            var maxDegreeOfParallelism = Math.Min(Math.Max(Environment.ProcessorCount, 1), 18);
             log.PrintInfo(tag, "Quality scan existing: processing {0} candidates with up to {1} workers.", candidates.Count, maxDegreeOfParallelism);
 
             var progressStopwatch = Stopwatch.StartNew();

@@ -14,6 +14,7 @@ All notable changes to this project are documented in this file.
 - Command `--quality-scan-existing` to analyze already imported JPG/JPEG files and populate DB quality metadata retroactively.
 - Unit tests for quality analysis behavior (`QualityAnalyzerTests`).
 - Integration test coverage for quality warn mode and report generation.
+- Debian package build support for Raspberry Pi runtimes (`linux-arm`, `linux-arm64`).
 
 ### Changed
 
@@ -21,6 +22,7 @@ All notable changes to this project are documented in this file.
 - Quality assessment entries now include source path, target path, and import status for actionable cleanup.
 - Quality review now reads quality metadata from DB (`images.quality_*`) instead of requiring JSON reports; JSON remains optional export.
 - Existing collections can now be quality-scanned post-import in dry-run or apply mode (`--quality-scan-existing --only-missing|--all`).
+- CI Debian packaging now publishes runtime-specific artifacts for `linux-x64`, `linux-arm`, and `linux-arm64`.
 
 ### Fixed
 

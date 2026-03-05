@@ -57,6 +57,7 @@ dotnet build
   - `--apply-changes`: inserts missing DB entries and removes orphan DB entries.
 - `--quality-review <target path> [--verdict review|reject] [--action list|delete|interactive] [--dry-run|--apply-changes]`
   - Uses quality metadata stored in the database (no report file required).
+  - Default verdict is `reject`.
   - `--action list` (default): lists matching imported files.
   - `--action delete`: removes matching files and associated DB entries.
   - `--action interactive`: opens each file in a simple viewer window and prompts for `delete` / `keep` / `quit` in CLI.
@@ -145,6 +146,30 @@ Build package:
 
 ```bash
 dotnet deb
+```
+
+Build Raspberry Pi packages explicitly:
+
+```bash
+# Raspberry Pi OS 64-bit
+dotnet deb -r linux-arm64
+
+# Raspberry Pi OS 32-bit (armhf)
+dotnet deb -r linux-arm
+```
+
+Install on Raspberry Pi:
+
+```bash
+sudo apt update
+sudo apt install -y libturbojpeg0
+sudo dpkg -i ./path/to/picmag_*_arm64.deb   # or *_armhf.deb
+```
+
+If dependencies are missing after `dpkg -i`:
+
+```bash
+sudo apt -f install
 ```
 
 ## Features
