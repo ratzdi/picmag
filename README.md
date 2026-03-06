@@ -104,6 +104,33 @@ dotnet build
 ./picmag --version
 ```
 
+## Bash tab completion
+
+`picmag` supports Bash completion for commands and options (including values for `--quality-filter`, `--verdict`, and `--action`).
+
+If installed via Debian package, the completion file is installed to `/etc/bash_completion.d/picmag`.
+
+Load in current shell:
+
+```bash
+source /etc/bash_completion
+```
+
+Test:
+
+```bash
+picmag --qua<TAB>
+picmag --quality-review /path --action <TAB>
+```
+
+If completion is not active in your shell startup, add to `~/.bashrc`:
+
+```bash
+if [ -f /etc/bash_completion ]; then
+  . /etc/bash_completion
+fi
+```
+
 ## Tests
 
 ```bash
@@ -162,13 +189,28 @@ Install on Raspberry Pi:
 
 ```bash
 sudo apt update
-sudo apt install -y libturbojpeg0
-sudo dpkg -i ./path/to/picmag_*_arm64.deb   # or *_armhf.deb
+sudo apt install ./path/to/picmag_*_arm64.deb   # or *_armhf.deb
 ```
 
-If dependencies are missing after `dpkg -i`:
+If you installed an older package and get `You must install .NET to run this application`, install the runtime once:
 
 ```bash
+sudo apt update
+sudo apt install dotnet-runtime-8.0
+```
+
+New runtime-specific packages built with `dotnet deb -r ...` are published as self-contained and do not require a separate .NET runtime installation.
+
+For Raspberry Pi OS 32-bit (armhf), install the armhf package explicitly:
+
+```bash
+sudo apt install ./path/to/picmag_*_armhf.deb
+```
+
+Alternative (manual):
+
+```bash
+sudo dpkg -i ./path/to/picmag_*_arm64.deb   # or *_armhf.deb
 sudo apt -f install
 ```
 

@@ -6,6 +6,22 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Bash tab completion for `picmag` commands and key option values, installed via Debian package (`/etc/bash_completion.d/picmag`).
+
+### Changed
+
+- Runtime-specific Debian builds (`dotnet deb -r ...`) are now self-contained to avoid target-side .NET runtime requirements.
+
+### Fixed
+
+- Debian package now declares `libsqlite3-dev` to provide `libsqlite3.so` and prevent `DllNotFoundException` for `sqlite3` on target systems.
+
+## [0.3.0] - 2026-03-06
+
+<!-- markdownlint-disable MD024 -->
+
+### Added
+
 - Import option `--quality-filter off|warn|strict` for JPEG quality screening during import.
 - Import option `--quality-report` to write a detailed quality analysis report to `.picmag/quality-report-<timestamp>.log`.
 - Command `--quality-review` for post-import quality review with list/delete actions and dry-run/apply modes.
@@ -23,14 +39,14 @@ All notable changes to this project are documented in this file.
 - Quality review now reads quality metadata from DB (`images.quality_*`) instead of requiring JSON reports; JSON remains optional export.
 - Existing collections can now be quality-scanned post-import in dry-run or apply mode (`--quality-scan-existing --only-missing|--all`).
 - CI Debian packaging now publishes runtime-specific artifacts for `linux-x64`, `linux-arm`, and `linux-arm64`.
+- Debian package metadata now declares `libturbojpeg0` as dependency.
+- Debian install documentation now prefers `apt install ./...deb` for automatic dependency resolution.
 
 ### Fixed
 
 -
 
 ## [0.2.0] - 2026-02-27
-
-<!-- markdownlint-disable MD024 -->
 
 ### Added
 
