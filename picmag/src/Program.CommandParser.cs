@@ -51,7 +51,7 @@ namespace picmag
             public bool DryRun { get; set; } = true;
             public QualityFilterMode QualityFilterMode { get; set; } = QualityFilterMode.Off;
             public bool WriteQualityReport { get; set; }
-            public QualityReviewVerdict QualityReviewVerdict { get; set; } = QualityReviewVerdict.Review;
+            public QualityReviewVerdict QualityReviewVerdict { get; set; } = QualityReviewVerdict.Reject;
             public QualityReviewAction QualityReviewAction { get; set; } = QualityReviewAction.List;
             public bool QualityScanOnlyMissing { get; set; } = true;
         }
@@ -135,7 +135,7 @@ namespace picmag
             {
                 Type = CommandType.QualityReview,
                 TargetPath = args[1],
-                QualityReviewVerdict = QualityReviewVerdict.Review,
+                QualityReviewVerdict = QualityReviewVerdict.Reject,
                 QualityReviewAction = QualityReviewAction.List,
                 DryRun = true
             };
@@ -226,7 +226,7 @@ namespace picmag
 
         bool TryParseQualityReviewVerdict(string rawValue, out QualityReviewVerdict verdict)
         {
-            verdict = QualityReviewVerdict.Review;
+            verdict = QualityReviewVerdict.Reject;
 
             if (string.Equals(rawValue, "review", StringComparison.OrdinalIgnoreCase))
             {

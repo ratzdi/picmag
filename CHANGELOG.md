@@ -15,6 +15,7 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - Debian package now declares `libsqlite3-dev` to provide `libsqlite3.so` and prevent `DllNotFoundException` for `sqlite3` on target systems.
+- Interactive quality review now closes the opened image window automatically after a decision (`delete`, `keep`, `quit`).
 
 ## [0.3.0] - 2026-03-06
 

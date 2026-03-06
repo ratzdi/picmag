@@ -189,6 +189,18 @@ namespace picmag
             using var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseCts, log, new List<string> { "jpg", "mp4" }, md5Cache);
 
             var candidates = database.Images.GetByQualityVerdict(verdict);
+            log.PrintInfo(tag, "Quality review started. verdict={0}, action={1}, candidates={2}",
+                verdict.ToString().ToLowerInvariant(),
+                action.ToString().ToLowerInvariant(),
+                candidates.Count);
+
+            if (candidates.Count == 0)
+            {
+                log.PrintInfo(tag, "No matching entries found for verdict '{0}'.", verdict.ToString().ToLowerInvariant());
+                log.PrintInfo(tag, "Tip: run './picmag --quality-scan-existing {0} --apply-changes' first to generate quality metadata.", targetPath);
+                if (verdict == QualityReviewVerdict.Review)
+                    log.PrintInfo(tag, "Tip: for stronger defects, try '--verdict reject'.");
+            }
 
             int deletedFiles = 0;
             int removedDbEntries = 0;
@@ -215,13 +227,15 @@ namespace picmag
 
                 if (action == QualityReviewAction.Interactive)
                 {
-                    TryOpenImageWindow(absolutePath);
+                    var imageWindow = TryOpenImageWindow(absolutePath);
 
                     Console.WriteLine();
                     Console.WriteLine("Quality review candidate: {0}", relativePath);
                     Console.WriteLine("Reason: {0}", candidate.QualityReason ?? "n/a");
                     Console.WriteLine("Decision [d=delete, k=keep, q=quit]: ");
                     var decision = (Console.ReadLine() ?? string.Empty).Trim().ToLowerInvariant();
+
+                    TryCloseImageWindow(imageWindow, absolutePath);
 
                     if (decision == "q")
                     {
@@ -455,12 +469,12 @@ namespace picmag
             }
         }
 
-        void TryOpenImageWindow(string absolutePath)
+        Process TryOpenImageWindow(string absolutePath)
         {
             try
             {
                 if (!File.Exists(absolutePath))
-                    return;
+                    return null;
 
                 var process = new Process();
                 process.StartInfo.FileName = "xdg-open";
@@ -468,10 +482,45 @@ namespace picmag
                 process.StartInfo.UseShellExecute = false;
                 process.StartInfo.CreateNoWindow = true;
                 process.Start();
+                return process;
             }
             catch (Exception ex)
             {
                 log.PrintDebug(tag, "Could not open image window for {0}: {1}", absolutePath, ex.Message);
+                return null;
+            }
+        }
+
+        void TryCloseImageWindow(Process launcherProcess, string absolutePath)
+        {
+            try
+            {
+                if (launcherProcess != null && !launcherProcess.HasExited)
+                {
+                    launcherProcess.Kill();
+                }
+            }
+            catch (Exception ex)
+            {
+                log.PrintDebug(tag, "Could not close opener process for {0}: {1}", absolutePath, ex.Message);
+            }
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(absolutePath) || !File.Exists("/usr/bin/pkill"))
+                    return;
+
+                using var closeProcess = new Process();
+                closeProcess.StartInfo.FileName = "/usr/bin/pkill";
+                closeProcess.StartInfo.Arguments = "-f -- \"" + absolutePath + "\"";
+                closeProcess.StartInfo.UseShellExecute = false;
+                closeProcess.StartInfo.CreateNoWindow = true;
+                closeProcess.Start();
+                closeProcess.WaitForExit(1000);
+            }
+            catch (Exception ex)
+            {
+                log.PrintDebug(tag, "Could not close image window for {0}: {1}", absolutePath, ex.Message);
             }
         }
 
