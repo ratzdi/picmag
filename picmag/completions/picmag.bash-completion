@@ -1,0 +1,97 @@
+_picmag_completion()
+{
+    local cur prev words cword
+    _init_completion -n : || return
+
+    local global_flags="-h --version -v"
+    local commands="-i -d --sanity-checks --migrate-cache --quality-review --quality-scan-existing"
+
+    case "$prev" in
+        --quality-filter)
+            COMPREPLY=( $(compgen -W "off warn strict" -- "$cur") )
+            return 0
+            ;;
+        --verdict)
+            COMPREPLY=( $(compgen -W "review reject" -- "$cur") )
+            return 0
+            ;;
+        --action)
+            COMPREPLY=( $(compgen -W "list delete interactive" -- "$cur") )
+            return 0
+            ;;
+        -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing)
+            COMPREPLY=( $(compgen -d -- "$cur") )
+            return 0
+            ;;
+    esac
+
+    local top_command=""
+    for ((i=1; i<${#words[@]}; i++)); do
+        case "${words[i]}" in
+            -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing)
+                top_command="${words[i]}"
+                break
+                ;;
+        esac
+    done
+
+    if [[ -z "$top_command" ]]; then
+        COMPREPLY=( $(compgen -W "$commands $global_flags" -- "$cur") )
+        return 0
+    fi
+
+    case "$top_command" in
+        -i)
+            if [[ $cword -eq 2 || $cword -eq 3 ]]; then
+                COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            COMPREPLY=( $(compgen -W "--delete-source --quality-filter --quality-report" -- "$cur") )
+            return 0
+            ;;
+        -d)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -f -- "$cur") )
+                return 0
+            fi
+            if [[ $cword -eq 3 ]]; then
+                COMPREPLY=( $(compgen -f -- "$cur") )
+                return 0
+            fi
+            return 0
+            ;;
+        --sanity-checks)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            COMPREPLY=( $(compgen -W "--dry-run --apply-changes" -- "$cur") )
+            return 0
+            ;;
+        --migrate-cache)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            return 0
+            ;;
+        --quality-review)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            COMPREPLY=( $(compgen -W "--verdict --action --dry-run --apply-changes" -- "$cur") )
+            return 0
+            ;;
+        --quality-scan-existing)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            COMPREPLY=( $(compgen -W "--only-missing --all --dry-run --apply-changes" -- "$cur") )
+            return 0
+            ;;
+    esac
+}
+
+complete -F _picmag_completion picmag

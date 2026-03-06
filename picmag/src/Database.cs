@@ -33,17 +33,23 @@ namespace picmag
         private List<string> extensions;
         private MD5Cache md5Cache;
         private bool deleteSourceAfterImport;
+        private readonly QualityFilterMode qualityFilterMode;
         public uint InsertedImageCount { get; private set; }
         public int AlreadyImportedFileCounter { get; private set; }
         public uint DeletedSourceFileCount { get; private set; }
         public uint DeleteSourceFailedCount { get; private set; }
         public IReadOnlyList<string> ImportedFiles => importedFiles.AsReadOnly();
         public IReadOnlyList<string> NotImportedFiles => notImportedFiles.AsReadOnly();
+        public IReadOnlyList<QualityAssessmentResult> QualityAssessmentResults => qualityAssessmentResults.AsReadOnly();
+        public int QualityReviewCount { get; private set; }
+        public int QualityRejectedCount { get; private set; }
+        public int QualityErrorCount { get; private set; }
         public ImagesTable Images { get; private set; }
         private readonly List<string> importedFiles = new List<string>();
         private readonly List<string> notImportedFiles = new List<string>();
+        private readonly List<QualityAssessmentResult> qualityAssessmentResults = new List<QualityAssessmentResult>();
         private bool disposed;
-        public Database(string importDestinationPath, string databaseFilepath, CancellationTokenSource cts, ILog log, List<string> extensions, MD5Cache cache, bool deleteSourceAfterImport = false)
+        public Database(string importDestinationPath, string databaseFilepath, CancellationTokenSource cts, ILog log, List<string> extensions, MD5Cache cache, bool deleteSourceAfterImport = false, QualityFilterMode qualityFilterMode = QualityFilterMode.Off)
         {
             cancellationTokenSource = cts;
             sqliteConnection = new SqliteConnection(databaseFilepath);
@@ -55,6 +61,7 @@ namespace picmag
             this.extensions = extensions;
             md5Cache = cache;
             this.deleteSourceAfterImport = deleteSourceAfterImport;
+            this.qualityFilterMode = qualityFilterMode;
         }
         ~Database()
         {
@@ -117,9 +124,10 @@ namespace picmag
 
                         if ((extension.Equals("jpeg") || extension.Equals("jpg")) && extensions.Contains(extension))
                         {
+                            var notImportedBefore = notImportedFiles.Count;
                             imported = OnJpegExtension(item, utils);
-                            if (!imported)
-                                AddNotImported(item.FullName, "already imported or cache hit");
+                            if (!imported && notImportedFiles.Count == notImportedBefore)
+                                AddNotImported(item.FullName, "already imported, cache hit, or filtered by quality");
                         }
                         else if (extension.Equals("mp4") && extensions.Contains(extension))
                         {
@@ -144,7 +152,7 @@ namespace picmag
             {
             }
         }
-        private bool CopyAndInsertFile(FileInfo item, Utils utils, string md5, string targetPath, DateTime creationTime)
+        private bool CopyAndInsertFile(FileInfo item, Utils utils, string md5, string targetPath, DateTime creationTime, QualityAssessmentResult qualityAssessment = null)
         {
             bool canInsert;
             if (!Images.ImageExists(targetPath, md5))
@@ -199,7 +207,7 @@ namespace picmag
                     try
                     {
                         // insert db
-                        Images.Insert(targetPath, creationTime, md5);
+                        Images.Insert(targetPath, creationTime, md5, qualityAssessment);
                         fileInserted = true;
                     }
                     catch (Exception ex)
@@ -311,8 +319,55 @@ namespace picmag
                     creationTime = item.CreationTime;
                 }
 
-                string targetPath = Path.Combine(dirPath, fileName);
-                return CopyAndInsertFile(item, utils, md5, targetPath, creationTime);
+                string targetPath = Path.Combine(dirPath, fileName).Replace('\\', '/');
+                QualityAssessmentResult qualityAssessment = null;
+
+                if (qualityFilterMode != QualityFilterMode.Off)
+                {
+                    if (QualityAnalyzer.TryAnalyzeJpeg(item.FullName, out var assessment))
+                    {
+                        qualityAssessment = assessment;
+                        qualityAssessment.TargetRelativePath = targetPath;
+
+                        if (assessment.Verdict == QualityVerdict.Review)
+                            QualityReviewCount++;
+
+                        if (assessment.Verdict == QualityVerdict.Reject)
+                            QualityRejectedCount++;
+
+                        if (qualityFilterMode == QualityFilterMode.Strict && assessment.Verdict == QualityVerdict.Reject)
+                        {
+                            qualityAssessment.WasImported = false;
+                            qualityAssessmentResults.Add(qualityAssessment);
+                            AddNotImported(item.FullName, "quality rejected: " + assessment.Reason);
+                            log.PrintInfo(tag, "Quality reject: {0} ({1})", item.FullName, assessment.Reason);
+                            return false;
+                        }
+
+                        if (assessment.Verdict == QualityVerdict.Review || assessment.Verdict == QualityVerdict.Reject)
+                        {
+                            log.PrintInfo(tag, "Quality review: {0} ({1})", item.FullName, assessment.Reason);
+                        }
+                    }
+                    else
+                    {
+                        QualityErrorCount++;
+                        assessment.TargetRelativePath = targetPath;
+                        qualityAssessment = assessment;
+                        qualityAssessmentResults.Add(assessment);
+                        log.PrintError(tag, "Quality analysis failed for {0}: {1}", item.FullName, assessment.Reason);
+                    }
+                }
+
+                var imported = CopyAndInsertFile(item, utils, md5, targetPath, creationTime, qualityAssessment);
+                if (qualityAssessment != null)
+                {
+                    qualityAssessment.WasImported = imported;
+                    if (!qualityAssessmentResults.Contains(qualityAssessment))
+                        qualityAssessmentResults.Add(qualityAssessment);
+                }
+
+                return imported;
             }
             return false;
         }
@@ -335,7 +390,7 @@ namespace picmag
 
                 md5 = BitConverter.ToString(utils.GetMd5(item.FullName));
                 var targetPath = Path.Combine(utils.CreateDirectoryPathFrom(creationTime), item.Name);
-                return CopyAndInsertFile(item, utils, md5, targetPath, creationTime);
+                return CopyAndInsertFile(item, utils, md5, targetPath, creationTime, null);
             }
             return false;
         }

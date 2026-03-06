@@ -22,6 +22,19 @@ dotnet build
 # Apply sanity-check changes to sync DB <-> filesystem
 ./picmag --sanity-checks /home/user/picture_album --apply-changes
 
+# Import with quality analysis (warn mode keeps files, strict skips hard fails)
+./picmag -i /home/user/source_collection /home/user/picture_album --quality-filter warn --quality-report
+
+# Review and optionally delete imported images from latest quality report
+./picmag --quality-review /home/user/picture_album --verdict reject --action list
+./picmag --quality-review /home/user/picture_album --verdict reject --action delete --apply-changes
+
+# Analyze already imported JPG/JPEG files and persist quality metadata to DB
+./picmag --quality-scan-existing /home/user/picture_album --apply-changes
+
+# Manual review loop with image window + CLI decision (delete/keep/quit)
+./picmag --quality-review /home/user/picture_album --verdict reject --action interactive --apply-changes
+
 # Migrate legacy cache format to current format (.bak backup is created)
 ./picmag --migrate-cache /home/user/picture_album
 ```
@@ -32,10 +45,30 @@ dotnet build
   - Imports files from source to target.
   - Default extensions: `jpg,mp4`
   - Example custom extensions: `./picmag -i /src /dst jpg,png`
+  - `--quality-filter off|warn|strict`:
+    - `off` (default): no quality checks.
+    - `warn`: quality issues are reported, files are still imported.
+    - `strict`: hard quality failures are not imported.
+  - Quality analysis metadata is stored per image in the database (`images.quality_*`).
+  - `--quality-report` (optional): writes export reports (`.log` and `.json`) to `.picmag/`.
 - `--sanity-checks <target path> [extensions] [--dry-run|--apply-changes]`
   - Compares files in target with DB entries.
   - `--dry-run` (default): report only, no DB writes.
   - `--apply-changes`: inserts missing DB entries and removes orphan DB entries.
+- `--quality-review <target path> [--verdict review|reject] [--action list|delete|interactive] [--dry-run|--apply-changes]`
+  - Uses quality metadata stored in the database (no report file required).
+  - Default verdict is `reject`.
+  - `--action list` (default): lists matching imported files.
+  - `--action delete`: removes matching files and associated DB entries.
+  - `--action interactive`: opens each file in a simple viewer window and prompts for `delete` / `keep` / `quit` in CLI.
+  - `--dry-run` (default): no file or DB mutation.
+  - `--apply-changes`: applies delete action.
+- `--quality-scan-existing <target path> [--only-missing|--all] [--dry-run|--apply-changes]`
+  - Scans already imported JPG/JPEG files from DB entries and computes quality metadata.
+  - `--only-missing` (default): scans only rows without `quality_verdict`.
+  - `--all`: rescans all imported JPG/JPEG rows.
+  - `--dry-run` (default): performs analysis and writes report without DB updates.
+  - `--apply-changes`: writes quality metadata back to DB (`quality_*` columns).
 - `--migrate-cache <target path>`
   - Rewrites `.picmag/cache.txt` to current format.
   - Creates `.picmag/cache.txt.bak` before replacing.
@@ -69,6 +102,33 @@ dotnet build
 ```bash
 ./picmag -h
 ./picmag --version
+```
+
+## Bash tab completion
+
+`picmag` supports Bash completion for commands and options (including values for `--quality-filter`, `--verdict`, and `--action`).
+
+If installed via Debian package, the completion file is installed to `/etc/bash_completion.d/picmag`.
+
+Load in current shell:
+
+```bash
+source /etc/bash_completion
+```
+
+Test:
+
+```bash
+picmag --qua<TAB>
+picmag --quality-review /path --action <TAB>
+```
+
+If completion is not active in your shell startup, add to `~/.bashrc`:
+
+```bash
+if [ -f /etc/bash_completion ]; then
+  . /etc/bash_completion
+fi
 ```
 
 ## Tests
@@ -115,11 +175,53 @@ Build package:
 dotnet deb
 ```
 
+Build Raspberry Pi packages explicitly:
+
+```bash
+# Raspberry Pi OS 64-bit
+dotnet deb -r linux-arm64
+
+# Raspberry Pi OS 32-bit (armhf)
+dotnet deb -r linux-arm
+```
+
+Install on Raspberry Pi:
+
+```bash
+sudo apt update
+sudo apt install ./path/to/picmag_*_arm64.deb   # or *_armhf.deb
+```
+
+If you installed an older package and get `You must install .NET to run this application`, install the runtime once:
+
+```bash
+sudo apt update
+sudo apt install dotnet-runtime-8.0
+```
+
+New runtime-specific packages built with `dotnet deb -r ...` are published as self-contained and do not require a separate .NET runtime installation.
+
+For Raspberry Pi OS 32-bit (armhf), install the armhf package explicitly:
+
+```bash
+sudo apt install ./path/to/picmag_*_armhf.deb
+```
+
+Alternative (manual):
+
+```bash
+sudo dpkg -i ./path/to/picmag_*_arm64.deb   # or *_armhf.deb
+sudo apt -f install
+```
+
 ## Features
 
 - Import images and videos into date-based directories
 - Optional source cleanup via `--delete-source`
 - Import summary logs with imported / not imported file lists
+- Optional JPEG quality analysis with `--quality-filter` (`off|warn|strict`)
+- Optional per-file quality report via `--quality-report`
+- Post-import review and cleanup via `--quality-review`
 - Sanity checks with dry-run (default) and apply mode
 - Cache backward compatibility + explicit cache migration command
 
