@@ -4,7 +4,7 @@ _picmag_completion()
     _init_completion -n : || return
 
     local global_flags="-h --version -v"
-    local commands="-i -d --sanity-checks --migrate-cache --quality-review --quality-scan-existing"
+    local commands="-i -d --sanity-checks --migrate-cache --quality-review --quality-scan-existing --schedule-import --unschedule-import"
 
     case "$prev" in
         --quality-filter)
@@ -19,7 +19,15 @@ _picmag_completion()
             COMPREPLY=( $(compgen -W "list delete interactive" -- "$cur") )
             return 0
             ;;
-        -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing)
+        --period)
+            COMPREPLY=( $(compgen -W "daily weekly" -- "$cur") )
+            return 0
+            ;;
+        --weekday)
+            COMPREPLY=( $(compgen -W "mon tue wed thu fri sat sun" -- "$cur") )
+            return 0
+            ;;
+        -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing|--schedule-import|--unschedule-import)
             COMPREPLY=( $(compgen -d -- "$cur") )
             return 0
             ;;
@@ -28,7 +36,7 @@ _picmag_completion()
     local top_command=""
     for ((i=1; i<${#words[@]}; i++)); do
         case "${words[i]}" in
-            -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing)
+            -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing|--schedule-import|--unschedule-import)
                 top_command="${words[i]}"
                 break
                 ;;
@@ -89,6 +97,17 @@ _picmag_completion()
                 return 0
             fi
             COMPREPLY=( $(compgen -W "--only-missing --all --dry-run --apply-changes" -- "$cur") )
+            return 0
+            ;;
+        --schedule-import)
+            if [[ $cword -eq 2 || $cword -eq 3 ]]; then
+                COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            COMPREPLY=( $(compgen -W "--period --time --weekday --delete-source --quality-filter --quality-report" -- "$cur") )
+            return 0
+            ;;
+        --unschedule-import)
             return 0
             ;;
     esac

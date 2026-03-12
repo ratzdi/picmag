@@ -32,6 +32,15 @@ dotnet build
 # Analyze already imported JPG/JPEG files and persist quality metadata to DB
 ./picmag --quality-scan-existing /home/user/picture_album --apply-changes
 
+# Schedule periodic imports via user systemd timer (daily at 02:30)
+./picmag --schedule-import /home/user/source_collection /home/user/picture_album --period daily --time 02:30
+
+# Schedule periodic imports via user systemd timer (weekly on sunday at 03:00)
+./picmag --schedule-import /home/user/source_collection /home/user/picture_album --period weekly --weekday sun --time 03:00
+
+# Remove periodic import schedule (disables timer and removes user unit files)
+./picmag --unschedule-import
+
 # Manual review loop with image window + CLI decision (delete/keep/quit)
 ./picmag --quality-review /home/user/picture_album --verdict reject --action interactive --apply-changes
 
@@ -69,6 +78,14 @@ dotnet build
   - `--all`: rescans all imported JPG/JPEG rows.
   - `--dry-run` (default): performs analysis and writes report without DB updates.
   - `--apply-changes`: writes quality metadata back to DB (`quality_*` columns).
+- `--schedule-import <source path> <target path> [extensions] [--delete-source] [--quality-filter off|warn|strict] [--quality-report] --period daily|weekly [--time HH:mm] [--weekday mon..sun]`
+  - Creates/updates a user-level `systemd` timer for periodic imports.
+  - `--period daily|weekly` is required.
+  - `--time HH:mm` is optional (default: `02:00`).
+  - `--weekday mon..sun` is used for weekly schedules (default: `mon`).
+  - Installs files in `~/.config/systemd/user/picmag-import.service` and `~/.config/systemd/user/picmag-import.timer` and enables the timer using `systemctl --user`.
+- `--unschedule-import`
+  - Disables/stops periodic import (`systemctl --user disable --now picmag-import.timer`) and removes `~/.config/systemd/user/picmag-import.service` plus `~/.config/systemd/user/picmag-import.timer`.
 - `--migrate-cache <target path>`
   - Rewrites `.picmag/cache.txt` to current format.
   - Creates `.picmag/cache.txt.bak` before replacing.
