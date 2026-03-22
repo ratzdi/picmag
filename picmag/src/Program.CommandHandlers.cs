@@ -587,6 +587,15 @@ namespace picmag
             serviceContent.AppendLine();
             serviceContent.AppendLine("[Service]");
             serviceContent.AppendLine("Type=oneshot");
+            if (!string.IsNullOrWhiteSpace(request.BeforeCommand))
+            {
+                serviceContent.AppendLine($"ExecStartPre=-/bin/sh -lc {QuoteSystemdToken(request.BeforeCommand)}");
+            }
+            if (string.IsNullOrWhiteSpace(request.BeforeCommand))
+            {
+                serviceContent.AppendLine("# Optional placeholder for a prerequisite sync command:");
+                serviceContent.AppendLine("# ExecStartPre=-/bin/sh -lc \"nextcloudcmd --silent /path/to/local https://cloud.example/remote.php/dav/files/user\"");
+            }
             serviceContent.AppendLine($"ExecStart={execStart}");
 
             var timerContent = new StringBuilder();
@@ -613,10 +622,11 @@ namespace picmag
 
             if (daemonReloadOk && enableNowOk && listTimerOk)
             {
-                log.PrintInfo(tag, "Scheduled import enabled successfully. period={0}, time={1}, weekday={2}",
+                log.PrintInfo(tag, "Scheduled import enabled successfully. period={0}, time={1}, weekday={2}, before-command={3}",
                     request.SchedulePeriod.ToString().ToLowerInvariant(),
                     request.ScheduleTime,
-                    request.ScheduleWeekday);
+                    request.ScheduleWeekday,
+                    string.IsNullOrWhiteSpace(request.BeforeCommand) ? "none" : request.BeforeCommand);
                 return;
             }
 

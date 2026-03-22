@@ -66,6 +66,7 @@ namespace picmag
             public SchedulePeriod SchedulePeriod { get; set; } = SchedulePeriod.Daily;
             public string ScheduleTime { get; set; } = "02:00";
             public string ScheduleWeekday { get; set; } = "Mon";
+            public string BeforeCommand { get; set; }
         }
 
         void Start(string[] args)
@@ -222,6 +223,18 @@ namespace picmag
                         return false;
 
                     parsed.ScheduleWeekday = weekday;
+                    i++;
+                }
+                else if (args[i] == "--before-command")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    var command = args[i + 1]?.Trim();
+                    if (string.IsNullOrWhiteSpace(command))
+                        return false;
+
+                    parsed.BeforeCommand = command;
                     i++;
                 }
                 else if (args[i].StartsWith("-"))

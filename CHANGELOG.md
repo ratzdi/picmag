@@ -6,6 +6,9 @@ All notable changes to this project are documented in this file.
 
 ## [0.4.1] - 2026-03-12
 
+### Changed
+- Added --before-command to schedule-import CLI parsing.
+
 ### Fixed
 
 - JPEG quality analysis on Raspberry Pi/Linux ARM no longer disables TurboJPEG by default.
