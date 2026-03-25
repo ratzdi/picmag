@@ -727,7 +727,10 @@ namespace picmag
             if (string.IsNullOrEmpty(value))
                 return "\"\"";
 
-            return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+            // Normalize control characters that would break systemd unit file formatting
+            var sanitized = value.Replace("\r", " ").Replace("\n", " ");
+
+            return "\"" + sanitized.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         }
 
         string BuildOnCalendarExpression(SchedulePeriod period, string time, string weekday)
