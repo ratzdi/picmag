@@ -104,7 +104,7 @@ _picmag_completion()
                 COMPREPLY=( $(compgen -d -- "$cur") )
                 return 0
             fi
-            COMPREPLY=( $(compgen -W "--period --time --weekday --delete-source --quality-filter --quality-report" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--period --time --weekday --before-command --delete-source --quality-filter --quality-report" -- "$cur") )
             return 0
             ;;
         --unschedule-import)
