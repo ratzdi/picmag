@@ -246,7 +246,18 @@ namespace picmag
                     if (hasCustomExtensions)
                         return false;
 
-                    parsed.Extensions = new List<string>(args[i].ToLower().Split(','));
+                    var rawExtensions = args[i].ToLowerInvariant().Split(',');
+                    var extensions = new List<string>();
+                    foreach (var ext in rawExtensions)
+                    {
+                        var trimmed = ext.Trim();
+                        if (!string.IsNullOrEmpty(trimmed))
+                        {
+                            extensions.Add(trimmed);
+                        }
+                    }
+
+                    parsed.Extensions = extensions;
                     hasCustomExtensions = true;
                 }
             }
