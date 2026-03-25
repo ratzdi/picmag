@@ -154,7 +154,7 @@ namespace picmag
         bool TryParseScheduleImportCommand(string[] args, out CommandRequest request)
         {
             request = null;
-            if (args.Length < 6)
+            if (args.Length < 5)
                 return false;
 
             var parsed = new CommandRequest
