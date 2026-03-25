@@ -86,7 +86,7 @@ dotnet build
   - `--period daily|weekly` is required.
   - `--time HH:mm` is optional (default: `02:00`).
   - `--weekday mon..sun` is used for weekly schedules (default: `mon`).
-  - `--before-command "cmd"` is optional and runs a shell command via `ExecStartPre` before import (non-blocking), useful for sync workflows (e.g. `nextcloudcmd`).
+  - `--before-command "cmd"` is optional and runs a shell command via `ExecStartPre` before the import; the import waits for this command to finish, but failures are ignored when the unit uses a leading `-` on `ExecStartPre` (useful for sync workflows, e.g. `nextcloudcmd`).
   - Installs files in `~/.config/systemd/user/picmag-import.service` and `~/.config/systemd/user/picmag-import.timer` and enables the timer using `systemctl --user`.
 - `--unschedule-import`
   - Disables/stops periodic import (`systemctl --user disable --now picmag-import.timer`) and removes `~/.config/systemd/user/picmag-import.service` plus `~/.config/systemd/user/picmag-import.timer`.
