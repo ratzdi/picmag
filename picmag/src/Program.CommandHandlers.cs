@@ -576,8 +576,25 @@ namespace picmag
 
             var executablePath = Environment.ProcessPath;
             if (string.IsNullOrWhiteSpace(executablePath))
-                executablePath = programName;
+            {
+                // Fallback: try to resolve the absolute path from the current process
+                try
+                {
+                    executablePath = Process.GetCurrentProcess().MainModule?.FileName;
+                }
+                catch
+                {
+                    executablePath = null;
+                }
+            }
 
+            if (string.IsNullOrWhiteSpace(executablePath) || !Path.IsPathRooted(executablePath))
+            {
+                log.PrintError(tag, "Could not determine an absolute path to the picmag executable. " +
+                    "Refusing to write systemd units with a non-absolute ExecStart. " +
+                    "Please run picmag using its full path and try again.");
+                return;
+            }
             var execStart = BuildScheduledImportExecStart(request, executablePath);
             var onCalendar = BuildOnCalendarExpression(request.SchedulePeriod, request.ScheduleTime, request.ScheduleWeekday);
 
