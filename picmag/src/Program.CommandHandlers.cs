@@ -24,6 +24,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -305,13 +306,17 @@ namespace picmag
             }
 
             var maxDegreeOfParallelism = Math.Min(Math.Max(Environment.ProcessorCount, 1), 18);
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                && (RuntimeInformation.ProcessArchitecture == Architecture.Arm || RuntimeInformation.ProcessArchitecture == Architecture.Arm64))
+            {
+                maxDegreeOfParallelism = Math.Min(maxDegreeOfParallelism, 2);
+            }
             log.PrintInfo(tag, "Quality scan existing: processing {0} candidates with up to {1} workers.", candidates.Count, maxDegreeOfParallelism);
 
             var progressStopwatch = Stopwatch.StartNew();
             var lastProgressOutput = TimeSpan.Zero;
             var progressLock = new object();
-            var analysisResults = new List<(string RelativePath, QualityAssessmentResult Assessment)>(candidates.Count);
-            var analysisResultsLock = new object();
+            var dbWriteLock = new object();
 
             int assessed = 0;
             int errors = 0;
@@ -366,9 +371,21 @@ namespace picmag
                     }
                 }
 
-                lock (analysisResultsLock)
+                if (!dryRun)
                 {
-                    analysisResults.Add((relativePath, assessment));
+                    lock (dbWriteLock)
+                    {
+                        try
+                        {
+                            var rows = database.Images.UpdateQualityMetadata(relativePath, assessment);
+                            Interlocked.Add(ref updatedRows, rows);
+                        }
+                        catch (Exception ex)
+                        {
+                            Interlocked.Increment(ref errors);
+                            log.PrintError(tag, "Failed to update quality metadata for {0}: {1}", relativePath, ex.Message);
+                        }
+                    }
                 }
 
                 var currentAssessed = Interlocked.Increment(ref assessed);
@@ -391,22 +408,6 @@ namespace picmag
                     }
                 }
             });
-
-            if (!dryRun)
-            {
-                foreach (var analysisResult in analysisResults)
-                {
-                    try
-                    {
-                        updatedRows += database.Images.UpdateQualityMetadata(analysisResult.RelativePath, analysisResult.Assessment);
-                    }
-                    catch (Exception ex)
-                    {
-                        Interlocked.Increment(ref errors);
-                        log.PrintError(tag, "Failed to update quality metadata for {0}: {1}", analysisResult.RelativePath, ex.Message);
-                    }
-                }
-            }
 
             if (candidates.Count > 0)
                 Console.WriteLine();
@@ -562,6 +563,229 @@ namespace picmag
             }
         }
 
+        void HandleScheduleImport(CommandRequest request)
+        {
+            if(!RunSystemctlUser(""))
+            {
+                log.PrintError(tag, "User systemctl does not seem to be available. Cannot schedule import without systemd user services.");
+                return;
+            }
+
+            var homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var userSystemdDirectory = Path.Combine(homeDirectory, ".config", "systemd", "user");
+            Directory.CreateDirectory(userSystemdDirectory);
+
+            var serviceName = "picmag-import.service";
+            var timerName = "picmag-import.timer";
+            var servicePath = Path.Combine(userSystemdDirectory, serviceName);
+            var timerPath = Path.Combine(userSystemdDirectory, timerName);
+
+            var executablePath = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(executablePath))
+            {
+                // Fallback: try to resolve the absolute path from the current process
+                try
+                {
+                    executablePath = Process.GetCurrentProcess().MainModule?.FileName;
+                }
+                catch
+                {
+                    executablePath = null;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(executablePath) || !Path.IsPathRooted(executablePath))
+            {
+                log.PrintError(tag, "Could not determine an absolute path to the picmag executable. " +
+                    "Refusing to write systemd units with a non-absolute ExecStart. " +
+                    "Please run picmag using its full path and try again.");
+                return;
+            }
+            var execStart = BuildScheduledImportExecStart(request, executablePath);
+            var onCalendar = BuildOnCalendarExpression(request.SchedulePeriod, request.ScheduleTime, request.ScheduleWeekday);
+
+            var serviceContent = new StringBuilder();
+            serviceContent.AppendLine("[Unit]");
+            serviceContent.AppendLine("Description=picmag periodic import");
+            serviceContent.AppendLine();
+            serviceContent.AppendLine("[Service]");
+            serviceContent.AppendLine("Type=oneshot");
+            if (!string.IsNullOrWhiteSpace(request.BeforeCommand))
+            {
+                serviceContent.AppendLine($"ExecStartPre=-/bin/sh -lc {QuoteSystemdToken(request.BeforeCommand)}");
+            }
+            if (string.IsNullOrWhiteSpace(request.BeforeCommand))
+            {
+                serviceContent.AppendLine("# Optional placeholder for a prerequisite sync command:");
+                serviceContent.AppendLine("# ExecStartPre=-/bin/sh -lc \"nextcloudcmd --silent /path/to/local https://cloud.example/remote.php/dav/files/user\"");
+            }
+            serviceContent.AppendLine($"ExecStart={execStart}");
+
+            var timerContent = new StringBuilder();
+            timerContent.AppendLine("[Unit]");
+            timerContent.AppendLine("Description=Run picmag periodic import");
+            timerContent.AppendLine();
+            timerContent.AppendLine("[Timer]");
+            timerContent.AppendLine($"OnCalendar={onCalendar}");
+            timerContent.AppendLine("Persistent=true");
+            timerContent.AppendLine($"Unit={serviceName}");
+            timerContent.AppendLine();
+            timerContent.AppendLine("[Install]");
+            timerContent.AppendLine("WantedBy=timers.target");
+
+            File.WriteAllText(servicePath, serviceContent.ToString());
+            File.WriteAllText(timerPath, timerContent.ToString());
+
+            log.PrintInfo(tag, "Wrote systemd user service: {0}", servicePath);
+            log.PrintInfo(tag, "Wrote systemd user timer: {0}", timerPath);
+
+            var daemonReloadOk = RunSystemctlUser("daemon-reload");
+            var enableNowOk = RunSystemctlUser($"enable --now {timerName}");
+            var listTimerOk = RunSystemctlUser($"list-timers {timerName}");
+
+            if (daemonReloadOk && enableNowOk && listTimerOk)
+            {
+                log.PrintInfo(tag, "Scheduled import enabled successfully. period={0}, time={1}, weekday={2}, before-command={3}",
+                    request.SchedulePeriod.ToString().ToLowerInvariant(),
+                    request.ScheduleTime,
+                    request.ScheduleWeekday,
+                    string.IsNullOrWhiteSpace(request.BeforeCommand) ? "none" : request.BeforeCommand);
+                return;
+            }
+
+            log.PrintError(tag, "Could not enable timer automatically. You can enable it manually with:");
+            log.PrintError(tag, "  systemctl --user daemon-reload");
+            log.PrintError(tag, "  systemctl --user enable --now {0}", timerName);
+            log.PrintError(tag, "  systemctl --user list-timers {0}", timerName);
+        }
+
+        void HandleUnscheduleImport()
+        {
+            var homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var userSystemdDirectory = Path.Combine(homeDirectory, ".config", "systemd", "user");
+
+            var serviceName = "picmag-import.service";
+            var timerName = "picmag-import.timer";
+            var servicePath = Path.Combine(userSystemdDirectory, serviceName);
+            var timerPath = Path.Combine(userSystemdDirectory, timerName);
+
+            RunSystemctlUser($"disable --now {timerName}");
+            RunSystemctlUser($"stop {serviceName}");
+
+            var removedAnyFiles = false;
+            if (File.Exists(timerPath))
+            {
+                File.Delete(timerPath);
+                removedAnyFiles = true;
+                log.PrintInfo(tag, "Removed systemd user timer file: {0}", timerPath);
+            }
+
+            if (File.Exists(servicePath))
+            {
+                File.Delete(servicePath);
+                removedAnyFiles = true;
+                log.PrintInfo(tag, "Removed systemd user service file: {0}", servicePath);
+            }
+
+            RunSystemctlUser("daemon-reload");
+            RunSystemctlUser("reset-failed");
+
+            if (!removedAnyFiles)
+            {
+                log.PrintInfo(tag, "No local timer/service files found for unschedule. Existing systemd state (if any) was still requested to stop/disable.");
+            }
+
+            log.PrintInfo(tag, "Periodic import schedule has been removed.");
+        }
+
+        string BuildScheduledImportExecStart(CommandRequest request, string executablePath)
+        {
+            var commandParts = new List<string>
+            {
+                QuoteSystemdToken(executablePath),
+                QuoteSystemdToken("-i"),
+                QuoteSystemdToken(request.SourcePath),
+                QuoteSystemdToken(request.TargetPath)
+            };
+
+            if (request.Extensions != null && request.Extensions.Count > 0)
+            {
+                commandParts.Add(QuoteSystemdToken(string.Join(",", request.Extensions)));
+            }
+
+            if (request.DeleteSourceAfterImport)
+                commandParts.Add(QuoteSystemdToken("--delete-source"));
+
+            if (request.QualityFilterMode != QualityFilterMode.Off)
+            {
+                commandParts.Add(QuoteSystemdToken("--quality-filter"));
+                commandParts.Add(QuoteSystemdToken(request.QualityFilterMode.ToString().ToLowerInvariant()));
+            }
+
+            if (request.WriteQualityReport)
+                commandParts.Add(QuoteSystemdToken("--quality-report"));
+
+            return string.Join(" ", commandParts);
+        }
+
+        string QuoteSystemdToken(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return "\"\"";
+
+            // Normalize control characters that would break systemd unit file formatting
+            var sanitized = value.Replace("\r", " ").Replace("\n", " ");
+
+            return "\"" + sanitized.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        }
+
+        string BuildOnCalendarExpression(SchedulePeriod period, string time, string weekday)
+        {
+            var parts = time.Split(':');
+            var hour = parts[0];
+            var minute = parts[1];
+
+            if (period == SchedulePeriod.Weekly)
+                return $"{weekday} *-*-* {hour}:{minute}:00";
+
+            return $"*-*-* {hour}:{minute}:00";
+        }
+
+        bool RunSystemctlUser(string arguments)
+        {
+            try
+            {
+                using var process = new Process();
+                process.StartInfo.FileName = "systemctl";
+                process.StartInfo.Arguments = "--user " + arguments;
+                process.StartInfo.RedirectStandardOutput = true;
+                process.StartInfo.RedirectStandardError = true;
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+
+                string stdOut = process.StandardOutput.ReadToEnd();
+                string stdErr = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                if (!string.IsNullOrWhiteSpace(stdOut))
+                    log.PrintDebug(tag, "systemctl --user {0} output: {1}", arguments, stdOut.Trim());
+
+                if (process.ExitCode != 0)
+                {
+                    log.PrintError(tag, "systemctl --user {0} failed: {1}", arguments, stdErr.Trim());
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                log.PrintError(tag, "systemctl --user {0} failed: {1}", arguments, ex.Message);
+                return false;
+            }
+        }
+
         void WriteSanityCheckReport(string targetPath, List<string> extensions, Database.SanityCheckReport report)
         {
             try
@@ -643,6 +867,14 @@ namespace picmag
 
                 case CommandType.QualityScanExisting:
                     HandleQualityScanExisting(request.TargetPath, request.QualityScanOnlyMissing, request.DryRun);
+                    break;
+
+                case CommandType.ScheduleImport:
+                    HandleScheduleImport(request);
+                    break;
+
+                case CommandType.UnscheduleImport:
+                    HandleUnscheduleImport();
                     break;
             }
         }

@@ -4,13 +4,29 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-12
+
+### Changed
+- Added --before-command to schedule-import CLI parsing.
+
+### Fixed
+
+- JPEG quality analysis on Raspberry Pi/Linux ARM no longer disables TurboJPEG by default.
+- TurboJPEG decoding is now guarded with a conservative default parallelism on Linux ARM to reduce native decoder crashes under load.
+- Added environment override `PICMAG_TURBOJPEG_MAX_PARALLELISM` to tune TurboJPEG decode concurrency for stability/performance trade-offs.
+
+## [0.4.0] - 2026-03-10
+
 ### Added
 
 - Bash tab completion for `picmag` commands and key option values, installed via Debian package (`/etc/bash_completion.d/picmag`).
+- Command `--schedule-import` to configure periodic imports on Linux via `systemd --user` timer.
+- Schedule options `--period daily|weekly`, `--time HH:mm`, and `--weekday mon..sun` for user-defined execution intervals.
 
 ### Changed
 
 - Runtime-specific Debian builds (`dotnet deb -r ...`) are now self-contained to avoid target-side .NET runtime requirements.
+- CLI help and README now document periodic Linux execution (daily/weekly examples).
 
 ### Fixed
 

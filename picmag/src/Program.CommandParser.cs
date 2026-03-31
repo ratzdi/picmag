@@ -22,6 +22,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace picmag
 {
@@ -36,7 +37,15 @@ namespace picmag
             SanityChecks,
             MigrateCache,
             QualityReview,
-            QualityScanExisting
+            QualityScanExisting,
+            ScheduleImport,
+            UnscheduleImport
+        }
+
+        private enum SchedulePeriod
+        {
+            Daily,
+            Weekly
         }
 
         private class CommandRequest
@@ -54,6 +63,10 @@ namespace picmag
             public QualityReviewVerdict QualityReviewVerdict { get; set; } = QualityReviewVerdict.Reject;
             public QualityReviewAction QualityReviewAction { get; set; } = QualityReviewAction.List;
             public bool QualityScanOnlyMissing { get; set; } = true;
+            public SchedulePeriod SchedulePeriod { get; set; } = SchedulePeriod.Daily;
+            public string ScheduleTime { get; set; } = "02:00";
+            public string ScheduleWeekday { get; set; } = "Mon";
+            public string BeforeCommand { get; set; }
         }
 
         void Start(string[] args)
@@ -120,9 +133,208 @@ namespace picmag
                 case "--quality-scan-existing":
                     return TryParseQualityScanExistingCommand(args, out request);
 
+                case "--schedule-import":
+                    return TryParseScheduleImportCommand(args, out request);
+
+                case "--unschedule-import":
+                    if (args.Length != 1)
+                        return false;
+
+                    request = new CommandRequest
+                    {
+                        Type = CommandType.UnscheduleImport
+                    };
+                    return true;
+
                 default:
                     return false;
             }
+        }
+
+        bool TryParseScheduleImportCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length < 5)
+                return false;
+
+            var parsed = new CommandRequest
+            {
+                Type = CommandType.ScheduleImport,
+                SourcePath = args[1],
+                TargetPath = args[2],
+                SchedulePeriod = SchedulePeriod.Daily,
+                ScheduleTime = "02:00",
+                ScheduleWeekday = "Mon"
+            };
+
+            var hasCustomExtensions = false;
+            bool hasPeriod = false;
+
+            for (int i = 3; i < args.Length; i++)
+            {
+                if (args[i] == "--delete-source")
+                {
+                    parsed.DeleteSourceAfterImport = true;
+                }
+                else if (args[i] == "--quality-report")
+                {
+                    parsed.WriteQualityReport = true;
+                }
+                else if (args[i] == "--quality-filter")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    if (!TryParseQualityFilterMode(args[i + 1], out var qualityFilterMode))
+                        return false;
+
+                    parsed.QualityFilterMode = qualityFilterMode;
+                    i++;
+                }
+                else if (args[i] == "--period")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    if (!TryParseSchedulePeriod(args[i + 1], out var period))
+                        return false;
+
+                    parsed.SchedulePeriod = period;
+                    hasPeriod = true;
+                    i++;
+                }
+                else if (args[i] == "--time")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    if (!IsValidHourMinute(args[i + 1]))
+                        return false;
+
+                    parsed.ScheduleTime = args[i + 1];
+                    i++;
+                }
+                else if (args[i] == "--weekday")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    if (!TryParseScheduleWeekday(args[i + 1], out var weekday))
+                        return false;
+
+                    parsed.ScheduleWeekday = weekday;
+                    i++;
+                }
+                else if (args[i] == "--before-command")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    var command = args[i + 1]?.Trim();
+                    if (string.IsNullOrWhiteSpace(command))
+                        return false;
+
+                    parsed.BeforeCommand = command;
+                    i++;
+                }
+                else if (args[i].StartsWith("-"))
+                {
+                    return false;
+                }
+                else
+                {
+                    if (hasCustomExtensions)
+                        return false;
+
+                    var rawExtensions = args[i].ToLowerInvariant().Split(',');
+                    var extensions = new List<string>();
+                    foreach (var ext in rawExtensions)
+                    {
+                        var trimmed = ext.Trim();
+                        if (!string.IsNullOrEmpty(trimmed))
+                        {
+                            extensions.Add(trimmed);
+                        }
+                    }
+
+                    parsed.Extensions = extensions;
+                    hasCustomExtensions = true;
+                }
+            }
+
+            if (!hasPeriod)
+                return false;
+
+            request = parsed;
+            return true;
+        }
+
+        bool TryParseSchedulePeriod(string rawValue, out SchedulePeriod period)
+        {
+            period = SchedulePeriod.Daily;
+
+            if (string.Equals(rawValue, "daily", StringComparison.OrdinalIgnoreCase))
+            {
+                period = SchedulePeriod.Daily;
+                return true;
+            }
+
+            if (string.Equals(rawValue, "weekly", StringComparison.OrdinalIgnoreCase))
+            {
+                period = SchedulePeriod.Weekly;
+                return true;
+            }
+
+            return false;
+        }
+
+        bool TryParseScheduleWeekday(string rawValue, out string weekday)
+        {
+            weekday = null;
+            if (string.IsNullOrWhiteSpace(rawValue))
+                return false;
+
+            switch (rawValue.Trim().ToLowerInvariant())
+            {
+                case "mon":
+                case "monday":
+                    weekday = "Mon";
+                    return true;
+                case "tue":
+                case "tues":
+                case "tuesday":
+                    weekday = "Tue";
+                    return true;
+                case "wed":
+                case "wednesday":
+                    weekday = "Wed";
+                    return true;
+                case "thu":
+                case "thur":
+                case "thurs":
+                case "thursday":
+                    weekday = "Thu";
+                    return true;
+                case "fri":
+                case "friday":
+                    weekday = "Fri";
+                    return true;
+                case "sat":
+                case "saturday":
+                    weekday = "Sat";
+                    return true;
+                case "sun":
+                case "sunday":
+                    weekday = "Sun";
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        bool IsValidHourMinute(string rawValue)
+        {
+            return DateTime.TryParseExact(rawValue, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
         }
 
         bool TryParseQualityReviewCommand(string[] args, out CommandRequest request)

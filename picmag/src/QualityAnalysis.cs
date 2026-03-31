@@ -76,6 +76,10 @@ namespace picmag
         private static int turboJpegAvailability;
         private static int turboJpegResolverInitialized;
         private static readonly object turboJpegProbeLock = new object();
+        private static readonly int turboJpegMaxParallelism = GetTurboJpegMaxParallelism();
+        private static readonly SemaphoreSlim turboJpegDecodeGate = turboJpegMaxParallelism > 0
+            ? new SemaphoreSlim(turboJpegMaxParallelism, turboJpegMaxParallelism)
+            : null;
 
         public static bool TryAnalyzeJpeg(string filePath, out QualityAssessmentResult result)
         {
@@ -101,6 +105,10 @@ namespace picmag
 
             if (!CanUseTurboJpeg())
                 return false;
+
+            var decodeGate = turboJpegDecodeGate;
+            if (decodeGate != null)
+                decodeGate.Wait();
 
             try
             {
@@ -177,10 +185,21 @@ namespace picmag
             {
                 return false;
             }
+            finally
+            {
+                if (decodeGate != null)
+                    decodeGate.Release();
+            }
         }
 
         private static bool CanUseTurboJpeg()
         {
+            if (ShouldDisableTurboJpegByDefault())
+            {
+                Volatile.Write(ref turboJpegAvailability, -1);
+                return false;
+            }
+
             var availability = Volatile.Read(ref turboJpegAvailability);
             if (availability > 0)
                 return true;
@@ -205,6 +224,70 @@ namespace picmag
                 Volatile.Write(ref turboJpegAvailability, -1);
                 return false;
             }
+        }
+
+        private static bool ShouldDisableTurboJpegByDefault()
+        {
+            var overrideValue = Environment.GetEnvironmentVariable("PICMAG_USE_TURBOJPEG");
+            if (!string.IsNullOrWhiteSpace(overrideValue))
+            {
+                if (IsEnabledValue(overrideValue))
+                    return false;
+
+                if (IsDisabledValue(overrideValue))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static int GetTurboJpegMaxParallelism()
+        {
+            var overrideValue = Environment.GetEnvironmentVariable("PICMAG_TURBOJPEG_MAX_PARALLELISM");
+            if (TryParsePositiveInt(overrideValue, out var configuredParallelism))
+                return configuredParallelism;
+
+            if (IsLinuxArmProcess())
+                return 1;
+
+            return 0;
+        }
+
+        private static bool TryParsePositiveInt(string value, out int parsed)
+        {
+            parsed = 0;
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            if (!int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed))
+                return false;
+
+            return parsed > 0;
+        }
+
+        private static bool IsLinuxArmProcess()
+        {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                return false;
+
+            return RuntimeInformation.ProcessArchitecture == Architecture.Arm
+                || RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
+        }
+
+        private static bool IsEnabledValue(string value)
+        {
+            return value.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("on", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsDisabledValue(string value)
+        {
+            return value.Equals("0", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("false", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("no", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("off", StringComparison.OrdinalIgnoreCase);
         }
 
         private static void EnsureTurboJpegResolverConfigured()

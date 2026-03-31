@@ -23,7 +23,7 @@ Until `1.0.0`, the project uses this stricter rule for clarity:
 - `0.y.z` `MINOR` (`y`) is used for any user-visible feature change.
 - `PATCH` (`z`) is used for bug fixes and internal improvements.
 
-Current recommended baseline for this branch's feature set is `0.3.0`.
+Current recommended baseline for this branch's feature set is `0.4.1`.
 
 ## Release process
 
