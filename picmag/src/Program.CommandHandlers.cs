@@ -565,6 +565,12 @@ namespace picmag
 
         void HandleScheduleImport(CommandRequest request)
         {
+            if(!RunSystemctlUser(""))
+            {
+                log.PrintError(tag, "User systemctl does not seem to be available. Cannot schedule import without systemd user services.");
+                return;
+            }
+
             var homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             var userSystemdDirectory = Path.Combine(homeDirectory, ".config", "systemd", "user");
             Directory.CreateDirectory(userSystemdDirectory);
