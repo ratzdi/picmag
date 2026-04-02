@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-02
+
+### Added
+
+- Automated GitHub Release workflow to build and publish Debian packages for `amd64` and `arm64`.
+
+### Changed
+
+- Debian packaging metadata and maintainership details were updated for release automation.
+
 ## [0.4.1] - 2026-03-12
 
 ### Changed
