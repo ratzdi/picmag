@@ -20,7 +20,6 @@
   </ItemGroup>
   <ItemGroup>
     <DebDependency Include="libsqlite3-dev" />
-    <DebDependency Include="libturbojpeg0" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="completions/picmag.bash-completion" CopyToPublishDirectory="PreserveNewest" LinuxFileMode="0644">
