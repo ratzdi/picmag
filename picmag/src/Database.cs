@@ -299,7 +299,16 @@ namespace picmag
                         log.PrintError(tag, "Try to use file creation time instead: " + item.FullName);
                         log.PrintError(tag, ex.Message);
                         log.PrintError(tag, ex.StackTrace);
-                        dirPath = utils.CreateDirectoryPathFrom(item.CreationTime);
+                        try
+                        {
+                            dirPath = utils.CreateDirectoryPathFrom(item.CreationTime);
+                        }
+                        catch (Exception creationEx)
+                        {
+                            log.PrintError(tag, "File creation time also invalid, falling back to current date: " + item.FullName);
+                            log.PrintError(tag, creationEx.Message);
+                            dirPath = utils.CreateDirectoryPathFrom(DateTime.Now);
+                        }
                     }
 
                     try
