@@ -1,0 +1,12 @@
+Source: picmag
+Section: utils
+Priority: optional
+Maintainer: Dimitri Ratz <dimitri.ratz@protonmail.com>
+Build-Depends: debhelper-compat (= 13), dotnet-sdk-8.0
+Standards-Version: 4.7.0
+Homepage: https://github.com/ratzdi/picmag
+
+Package: picmag
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, dotnet-runtime-8.0, libsqlite3-0
+Description: Command-line tool to organize photos and videos into a chronological folder structure.

@@ -1,0 +1,98 @@
+name: Build Debian Package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            rid: linux-x64
+          - arch: arm64
+            rid: linux-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine package version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install Debian build tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev file
+
+      - name: Publish app for ${{ matrix.arch }}
+        run: |
+          dotnet publish ./picmag/picmag.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained false \
+            -o ./out/publish/${{ matrix.arch }}
+
+      - name: Build .deb for ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+
+          PKG_ROOT="./out/pkgroot-${{ matrix.arch }}"
+          APP_DIR="$PKG_ROOT/usr/lib/picmag"
+          BIN_DIR="$PKG_ROOT/usr/bin"
+          DEBIAN_DIR="$PKG_ROOT/DEBIAN"
+
+          mkdir -p "$APP_DIR" "$BIN_DIR" "$DEBIAN_DIR"
+          cp -a ./out/publish/${{ matrix.arch }}/. "$APP_DIR/"
+
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'exec /usr/bin/dotnet /usr/lib/picmag/picmag.dll "$@"' \
+            > "$BIN_DIR/picmag"
+          chmod 0755 "$BIN_DIR/picmag"
+
+          BASE_DEPS="dotnet-runtime-8.0, libsqlite3-0"
+
+          mapfile -t ELF_FILES < <(find "$APP_DIR" -type f -exec sh -c 'file -b "$1" | grep -q "ELF" && echo "$1"' _ {} \;)
+          if [ ${#ELF_FILES[@]} -gt 0 ]; then
+            SHLIB_DEPS=$(dpkg-shlibdeps -O "${ELF_FILES[@]}" 2>/dev/null | sed -n 's/^shlibs:Depends=//p' || true)
+          else
+            SHLIB_DEPS=""
+          fi
+
+          if [ -n "$SHLIB_DEPS" ]; then
+            DEPENDS="$BASE_DEPS, $SHLIB_DEPS"
+          else
+            DEPENDS="$BASE_DEPS"
+          fi
+
+          printf '%s\n' \
+            'Package: picmag' \
+            "Version: ${VERSION}" \
+            'Section: utils' \
+            'Priority: optional' \
+            'Architecture: ${{ matrix.arch }}' \
+            'Maintainer: Dimitri Ratz <dimitri.ratz@protonmail.com>' \
+            "Depends: ${DEPENDS}" \
+            'Description: Command-line tool to organize photos and videos into a chronological folder structure.' \
+            > "$DEBIAN_DIR/control"
+
+          chmod 0755 "$DEBIAN_DIR"
+          chmod 0644 "$DEBIAN_DIR/control"
+
+          dpkg-deb --build "$PKG_ROOT" "./out/picmag_${VERSION}_${{ matrix.arch }}.deb"
+
+      - name: Upload .deb to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./out/picmag_${{ env.VERSION }}_${{ matrix.arch }}.deb
