@@ -1,0 +1,53 @@
+picmag (0.5.0) unstable; urgency=medium
+
+  * Added GitHub Release automation for Debian package publishing (amd64, arm64).
+  * Updated Debian packaging metadata and maintainer information.
+
+ -- Dimitri Ratz <dimitri.ratz@protonmail.com>  Thu, 02 Apr 2026 00:00:00 +0000
+
+picmag (0.4.1) unstable; urgency=medium
+
+  * Added --before-command to schedule-import CLI parsing.
+  * Improved JPEG quality analysis stability on Raspberry Pi/Linux ARM.
+  * Added PICMAG_TURBOJPEG_MAX_PARALLELISM environment override.
+
+ -- Dimitri Ratz <dimitri.ratz@protonmail.com>  Thu, 12 Mar 2026 00:00:00 +0000
+
+picmag (0.4.0) unstable; urgency=medium
+
+  * Added bash completion installation via Debian package.
+  * Added schedule-import systemd user timer support.
+  * Added schedule options: --period, --time, --weekday.
+  * Updated help and README for periodic Linux execution.
+  * Fixed interactive quality review window auto-close behavior.
+
+ -- Dimitri Ratz <dimitri.ratz@protonmail.com>  Tue, 10 Mar 2026 00:00:00 +0000
+
+picmag (0.3.0) unstable; urgency=medium
+
+  * Added quality filter, report, review and scan-existing commands.
+  * Added machine-readable quality report JSON output.
+  * Added quality analysis unit/integration test coverage.
+  * Added Debian package build support for linux-arm/linux-arm64.
+  * Updated import summary and quality metadata persistence.
+
+ -- Dimitri Ratz <dimitri.ratz@protonmail.com>  Fri, 06 Mar 2026 00:00:00 +0000
+
+picmag (0.2.0) unstable; urgency=medium
+
+  * Added --migrate-cache command with backup generation.
+  * Added test coverage for cache migration and ImagesTable.
+  * Improved sanity checks with explicit dry-run/apply modes.
+  * Refactored CLI parser/handlers and import pipeline internals.
+  * Fixed dry-run sanity checks mutating database state.
+
+ -- Dimitri Ratz <dimitri.ratz@protonmail.com>  Fri, 27 Feb 2026 00:00:00 +0000
+
+picmag (0.1.0) unstable; urgency=medium
+
+  * Added --delete-source and --version CLI options.
+  * Added integration coverage for delete-source behavior.
+  * Updated versioning and README documentation.
+  * Fixed source file safety when no files are importable.
+
+ -- Dimitri Ratz <dimitri.ratz@protonmail.com>  Thu, 26 Feb 2026 00:00:00 +0000

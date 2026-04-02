@@ -1,0 +1,24 @@
+#!/usr/bin/make -f
+
+DEB_HOST_ARCH ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
+
+ifeq ($(DEB_HOST_ARCH),amd64)
+RID=linux-x64
+else ifeq ($(DEB_HOST_ARCH),arm64)
+RID=linux-arm64
+else
+$(error Unsupported architecture $(DEB_HOST_ARCH). Supported: amd64, arm64)
+endif
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	dotnet publish ./picmag/picmag.csproj -c Release -r $(RID) --self-contained false -o ./picmag/bin/Release/net8.0/$(RID)/publish
+
+override_dh_auto_install:
+	mkdir -p $(CURDIR)/debian/picmag/usr/lib/picmag
+	cp -r ./picmag/bin/Release/net8.0/$(RID)/publish/* $(CURDIR)/debian/picmag/usr/lib/picmag/
+	mkdir -p $(CURDIR)/debian/picmag/usr/bin
+	printf '%s\n' '#!/usr/bin/env bash' 'exec /usr/bin/dotnet /usr/lib/picmag/picmag.dll "$$@"' > $(CURDIR)/debian/picmag/usr/bin/picmag
+	chmod 0755 $(CURDIR)/debian/picmag/usr/bin/picmag
