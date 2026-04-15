@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-04-15
+
+### Changed
+
+- Use current date when exif timestamp is not available.
+
 ## [0.5.1] - 2026-04-14
 
 ### Changed
