@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-04-14
+
+### Changed
+
+- Removed turbojpg dependency.
+
 ## [0.5.0] - 2026-04-02
 
 ### Added

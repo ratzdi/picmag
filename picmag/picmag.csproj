@@ -5,7 +5,7 @@
     <RuntimeIdentifiers>linux-x64;linux-arm;linux-arm64</RuntimeIdentifiers>
     <RootNamespace>picmag</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <Version>0.5.0</Version>
+    <Version>0.5.1</Version>
     <AssemblyVersion>$(Version)</AssemblyVersion>
     <FileVersion>$(Version)</FileVersion>
     <InformationalVersion>$(Version)</InformationalVersion>
@@ -20,7 +20,6 @@
   </ItemGroup>
   <ItemGroup>
     <DebDependency Include="libsqlite3-dev" />
-    <DebDependency Include="libturbojpeg0" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="completions/picmag.bash-completion" CopyToPublishDirectory="PreserveNewest" LinuxFileMode="0644">
