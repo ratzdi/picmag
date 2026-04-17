@@ -31,11 +31,11 @@ namespace picmag
     partial class Program
     {
         private const String programName = "picmag";
-        private ILog log;
+        private Log log;
         private const String tag = "Main";
         private readonly String relDatabaseFilepath = System.IO.Path.Combine(".picmag", "database.sqlite");
 
-        private Program(ILog log)
+        private Program(Log log)
         {
             this.log = log;
         }
@@ -62,6 +62,7 @@ namespace picmag
             Console.WriteLine("\t--unschedule-import - Disable/remove user systemd timer and service for periodic import");
             Console.WriteLine("\t--version, -v - Print application version and git short revision");
             Console.WriteLine("\t-h help");
+            Console.WriteLine("\t--verbosity debug|info|error - Set log level for any command (default: info)");
         }
 
         string GetAppVersion()

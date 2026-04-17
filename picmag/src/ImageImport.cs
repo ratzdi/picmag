@@ -21,6 +21,7 @@
 // SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 
@@ -30,6 +31,7 @@ namespace picmag
     {
         #region Events
         public event EventHandler<FileFoundEventArgs> AddFile;
+        public event Action<uint> ScanCompleted;
         #endregion
         public uint TotalFilesCount { get; private set; }
         private CancellationTokenSource cancellationTokenSource;
@@ -47,20 +49,31 @@ namespace picmag
         {
             cancellationTokenSource.Token.ThrowIfCancellationRequested();
 
-            var d = new DirectoryInfo(rootPath);
-            var files = d.GetFiles();
+            var files = new List<FileInfo>();
+            FindFiles(rootPath, files);
+            TotalFilesCount = (uint)files.Count;
+            ScanCompleted?.Invoke(TotalFilesCount);
+
             foreach (var file in files)
             {
+                cancellationTokenSource.Token.ThrowIfCancellationRequested();
                 AddFile(this, new FileFoundEventArgs(file));
-                TotalFilesCount++;
             }
+        }
+
+        private void FindFiles(string rootPath, List<FileInfo> files)
+        {
+            cancellationTokenSource.Token.ThrowIfCancellationRequested();
+
+            var d = new DirectoryInfo(rootPath);
+            files.AddRange(d.GetFiles());
 
             var directories = d.GetDirectories("*");
 
             if (directories.Length > 0)
             {
                 foreach (var dir in directories)
-                    Start(dir.FullName);
+                    FindFiles(dir.FullName, files);
             }
         }
     }

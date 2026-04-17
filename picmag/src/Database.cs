@@ -34,7 +34,9 @@ namespace picmag
         private MD5Cache md5Cache;
         private bool deleteSourceAfterImport;
         private readonly QualityFilterMode qualityFilterMode;
+        private uint totalFilesCount;
         public uint InsertedImageCount { get; private set; }
+        public uint ProcessedFileCount { get; private set; }
         public int AlreadyImportedFileCounter { get; private set; }
         public uint DeletedSourceFileCount { get; private set; }
         public uint DeleteSourceFailedCount { get; private set; }
@@ -105,6 +107,10 @@ namespace picmag
             if (!imageQueue.IsAddingCompleted)
                 imageQueue.CompleteAdding();
         }
+        public void SetTotalFilesCount(uint count)
+        {
+            totalFilesCount = count;
+        }
         public int GetImageQueueSize()
         {
             return imageQueue.Count;
@@ -117,6 +123,8 @@ namespace picmag
         public void StartReceiving()
         {
             var utils = new Utils();
+            var progressStopwatch = Stopwatch.StartNew();
+            var lastProgressOutput = TimeSpan.Zero;
             try
             {
                 foreach (var item in imageQueue.GetConsumingEnumerable(cancellationTokenSource.Token))
@@ -149,6 +157,21 @@ namespace picmag
                         AddNotImported(item.FullName, "processing error");
                         log.PrintError(tag, ex.Message);
                         log.PrintError(tag, ex.StackTrace);
+                    }
+                    finally
+                    {
+                        ProcessedFileCount++;
+                        var elapsed = progressStopwatch.Elapsed;
+                        if (ProcessedFileCount % 25 == 0
+                            || ProcessedFileCount == totalFilesCount
+                            || (elapsed - lastProgressOutput).TotalSeconds >= 1.0)
+                        {
+                            log.PrintInfo(tag, "Import progress: processed {0}/{1} files; {2} remaining.",
+                                ProcessedFileCount,
+                                totalFilesCount,
+                                totalFilesCount - ProcessedFileCount);
+                            lastProgressOutput = elapsed;
+                        }
                     }
                 }
             }

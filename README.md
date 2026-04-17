@@ -57,6 +57,7 @@ dotnet build
   - Imports files from source to target.
   - Default extensions: `jpg,mp4`
   - Example custom extensions: `./picmag -i /src /dst jpg,png`
+  - Logs import progress with processed and remaining file counts.
   - `--quality-filter off|warn|strict`:
     - `off` (default): no quality checks.
     - `warn`: quality issues are reported, files are still imported.
@@ -111,6 +112,26 @@ dotnet build
 - `.NET SDK 8.0`
 - `libsqlite3-dev`
 - `ffprobe` (optional, used for MP4 metadata timestamp extraction)
+
+## Logging
+
+The default log level is `Info`: informational messages and errors are emitted;
+debug messages are suppressed for both console and file output.
+Use `--verbosity debug|info|error` with any command, before or after its arguments:
+
+```bash
+./picmag -i /src /dst --verbosity debug
+./picmag --verbosity error --quality-scan-existing /dst
+./picmag --schedule-import /src /dst --period daily --verbosity info
+```
+
+`debug` includes all log messages, `info` includes informational messages and
+errors, and `error` includes only errors. Scheduled imports retain the selected
+level in their generated service command. Help, version, and interactive prompts
+are not affected by the log level.
+
+Log messages are written once to standard output and once to `picmag.log` in the
+working directory. Scheduled imports send standard output to the systemd journal.
 
 ## Build
 

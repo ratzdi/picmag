@@ -65,6 +65,7 @@ namespace picmag
             databaseTask.Start();
 
             var imageFinder = new ImageImport(importTaskCancellationTokenSource, sourcePath);
+            imageFinder.ScanCompleted += database.SetTotalFilesCount;
             imageFinder.AddFile += database.OnAddFile;
             importTask = new Task(new Action(imageFinder.Start), importTaskCancellationTokenSource.Token);
             importTask.Start();
@@ -724,6 +725,9 @@ namespace picmag
 
             if (request.WriteQualityReport)
                 commandParts.Add(QuoteSystemdToken("--quality-report"));
+
+            commandParts.Add(QuoteSystemdToken("--verbosity"));
+            commandParts.Add(QuoteSystemdToken(request.Verbosity.ToString().ToLowerInvariant()));
 
             return string.Join(" ", commandParts);
         }

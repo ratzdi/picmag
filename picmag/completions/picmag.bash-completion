@@ -3,10 +3,14 @@ _picmag_completion()
     local cur prev words cword
     _init_completion -n : || return
 
-    local global_flags="-h --version -v"
+    local global_flags="-h --version -v --verbosity"
     local commands="-i -d --sanity-checks --migrate-cache --quality-review --quality-scan-existing --person-scan-existing --person-add --person-list --person-label --person-search --schedule-import --unschedule-import"
 
     case "$prev" in
+        --verbosity)
+            COMPREPLY=( $(compgen -W "debug info error" -- "$cur") )
+            return 0
+            ;;
         --quality-filter)
             COMPREPLY=( $(compgen -W "off warn strict" -- "$cur") )
             return 0
@@ -33,6 +37,11 @@ _picmag_completion()
             ;;
     esac
 
+    if [[ "$cur" == --verb* ]]; then
+        COMPREPLY=( $(compgen -W "--verbosity" -- "$cur") )
+        return 0
+    fi
+
     local top_command=""
     for ((i=1; i<${#words[@]}; i++)); do
         case "${words[i]}" in
@@ -54,7 +63,7 @@ _picmag_completion()
                 COMPREPLY=( $(compgen -d -- "$cur") )
                 return 0
             fi
-            COMPREPLY=( $(compgen -W "--delete-source --quality-filter --quality-report" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--delete-source --quality-filter --quality-report --verbosity" -- "$cur") )
             return 0
             ;;
         -d)
@@ -73,7 +82,7 @@ _picmag_completion()
                 COMPREPLY=( $(compgen -d -- "$cur") )
                 return 0
             fi
-            COMPREPLY=( $(compgen -W "--dry-run --apply-changes" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--dry-run --apply-changes --verbosity" -- "$cur") )
             return 0
             ;;
         --migrate-cache)
@@ -88,7 +97,7 @@ _picmag_completion()
                 COMPREPLY=( $(compgen -d -- "$cur") )
                 return 0
             fi
-            COMPREPLY=( $(compgen -W "--verdict --action --dry-run --apply-changes" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--verdict --action --dry-run --apply-changes --verbosity" -- "$cur") )
             return 0
             ;;
         --quality-scan-existing)
@@ -96,7 +105,7 @@ _picmag_completion()
                 COMPREPLY=( $(compgen -d -- "$cur") )
                 return 0
             fi
-            COMPREPLY=( $(compgen -W "--only-missing --all --dry-run --apply-changes" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--only-missing --all --dry-run --apply-changes --verbosity" -- "$cur") )
             return 0
             ;;
         --person-scan-existing)
@@ -104,7 +113,7 @@ _picmag_completion()
                 COMPREPLY=( $(compgen -d -- "$cur") )
                 return 0
             fi
-            COMPREPLY=( $(compgen -W "--only-missing --all" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--only-missing --all --verbosity" -- "$cur") )
             return 0
             ;;
         --person-add)
@@ -126,7 +135,7 @@ _picmag_completion()
                 COMPREPLY=( $(compgen -d -- "$cur") )
                 return 0
             fi
-            COMPREPLY=( $(compgen -W "--limit --face-id --person --reject" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--limit --face-id --person --reject --verbosity" -- "$cur") )
             return 0
             ;;
         --person-search)
@@ -141,7 +150,7 @@ _picmag_completion()
                 COMPREPLY=( $(compgen -d -- "$cur") )
                 return 0
             fi
-            COMPREPLY=( $(compgen -W "--period --time --weekday --before-command --delete-source --quality-filter --quality-report" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--period --time --weekday --before-command --delete-source --quality-filter --quality-report --verbosity" -- "$cur") )
             return 0
             ;;
         --unschedule-import)

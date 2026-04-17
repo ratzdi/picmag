@@ -56,6 +56,7 @@ namespace picmag
         private class CommandRequest
         {
             public CommandType Type { get; set; }
+            public LogLevel Verbosity { get; set; } = LogLevel.Info;
             public string DbFilepath { get; set; }
             public string ResultFilepath { get; set; }
             public string SourcePath { get; set; }
@@ -87,10 +88,59 @@ namespace picmag
                 return;
             }
 
+            log.MinimumLevel = request.Verbosity;
             ExecuteCommand(request);
         }
 
         bool TryParseCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            var commandArgs = new List<string>();
+            var verbosity = LogLevel.Info;
+            var hasVerbosity = false;
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] != "--verbosity")
+                {
+                    commandArgs.Add(args[i]);
+                    continue;
+                }
+
+                if (hasVerbosity || i + 1 >= args.Length)
+                {
+                    log.PrintError(tag, "--verbosity requires one value: debug, info, or error, and may only be specified once.");
+                    Environment.ExitCode = 1;
+                    return false;
+                }
+
+                switch (args[++i].ToLowerInvariant())
+                {
+                    case "debug":
+                        verbosity = LogLevel.Debug;
+                        break;
+                    case "info":
+                        verbosity = LogLevel.Info;
+                        break;
+                    case "error":
+                        verbosity = LogLevel.Error;
+                        break;
+                    default:
+                        log.PrintError(tag, "Invalid verbosity '{0}'. Expected debug, info, or error.", args[i]);
+                        Environment.ExitCode = 1;
+                        return false;
+                }
+
+                hasVerbosity = true;
+            }
+
+            if (!TryParseCommandCore(commandArgs.ToArray(), out request))
+                return false;
+
+            request.Verbosity = verbosity;
+            return true;
+        }
+
+        bool TryParseCommandCore(string[] args, out CommandRequest request)
         {
             request = null;
 

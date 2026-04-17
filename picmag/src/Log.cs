@@ -27,11 +27,20 @@ using System.Threading;
 
 namespace picmag
 {
+    public enum LogLevel
+    {
+        Debug,
+        Info,
+        Error
+    }
+
     public class Log : ILog
     {
-        public Log()
+        public Log(LogLevel minimumLevel = LogLevel.Info)
         {
+            MinimumLevel = minimumLevel;
         }
+        public LogLevel MinimumLevel { get; set; }
         public virtual IFormatProvider FormatProvider
         {
             get
@@ -52,6 +61,9 @@ namespace picmag
         }
         public void PrintDebug(String tag, String format, params Object[] args)
         {
+            if (MinimumLevel > LogLevel.Debug)
+                return;
+
             var logLine = FormatLogLine(tag, "D", String.Format(FormatProvider, format, args));
             Print(logLine);
         }
@@ -63,6 +75,9 @@ namespace picmag
 
         public void PrintInfo(String tag, String format, params Object[] args)
         {
+            if (MinimumLevel > LogLevel.Info)
+                return;
+
             var logLine = FormatLogLine(tag, "I", String.Format(FormatProvider, format, args));
             Print(logLine);
         }

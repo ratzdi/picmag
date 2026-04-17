@@ -26,7 +26,8 @@ namespace picmag
     {
         private static readonly object outputFileLock = new object();
         private string outputFilepath;
-        public FileLog(string outputFilepath)
+        public FileLog(string outputFilepath, LogLevel minimumLevel = LogLevel.Info)
+            : base(minimumLevel)
         {
             this.outputFilepath = outputFilepath;
         }
@@ -37,7 +38,6 @@ namespace picmag
             {
                 System.IO.File.AppendAllText(outputFilepath, logLine + System.Environment.NewLine);
             }
-            System.Diagnostics.Debug.WriteLine(logLine);
         }
     }
 }
