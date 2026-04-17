@@ -45,6 +45,8 @@ namespace picmag
         public int QualityRejectedCount { get; private set; }
         public int QualityErrorCount { get; private set; }
         public ImagesTable Images { get; private set; }
+        public PersonsTable Persons { get; private set; }
+        public ImageFacesTable ImageFaces { get; private set; }
         private readonly List<string> importedFiles = new List<string>();
         private readonly List<string> notImportedFiles = new List<string>();
         private readonly List<QualityAssessmentResult> qualityAssessmentResults = new List<QualityAssessmentResult>();
@@ -55,6 +57,8 @@ namespace picmag
             sqliteConnection = new SqliteConnection(databaseFilepath);
             sqliteConnection.Open();
             Images = new ImagesTable(sqliteConnection, log);
+            Persons = new PersonsTable(sqliteConnection);
+            ImageFaces = new ImageFacesTable(sqliteConnection);
             this.importDestinationPath = importDestinationPath;
             session_timestamp = DateTime.Now;
             this.log = log;

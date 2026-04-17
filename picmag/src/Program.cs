@@ -53,6 +53,11 @@ namespace picmag
             Console.WriteLine("\t--migrate-cache <target path> - Migrate .picmag/cache.txt to current format and create .bak backup");
             Console.WriteLine("\t--quality-review <target path> [--verdict review|reject] [--action list|delete|interactive] [--dry-run|--apply-changes] - Review imported files from DB quality metadata (default verdict: reject)");
             Console.WriteLine("\t--quality-scan-existing <target path> [--only-missing|--all] [--dry-run|--apply-changes] - Analyze already imported JPG/JPEG files and store quality metadata in DB");
+            Console.WriteLine("\t--person-scan-existing <target path> [--only-missing|--all] - Detect faces and persist embeddings for imported JPG/JPEG files (MVP mock analyzer)");
+            Console.WriteLine("\t--person-add <target path> <name> - Create or reuse a person identity for manual labeling");
+            Console.WriteLine("\t--person-list <target path> - List all known persons");
+            Console.WriteLine("\t--person-label <target path> [--limit N] | --face-id <id> (--person <name>|--reject) - List unlabeled faces or assign a label");
+            Console.WriteLine("\t--person-search <target path> <name> - List image paths with confirmed labels for the person");
             Console.WriteLine("\t--schedule-import <source path> <target path> [extensions] [--delete-source] [--quality-filter off|warn|strict] [--quality-report] [--before-command \"cmd\"] --period daily|weekly [--time HH:mm] [--weekday mon..sun] - Install/refresh user systemd timer for periodic import");
             Console.WriteLine("\t--unschedule-import - Disable/remove user systemd timer and service for periodic import");
             Console.WriteLine("\t--version, -v - Print application version and git short revision");

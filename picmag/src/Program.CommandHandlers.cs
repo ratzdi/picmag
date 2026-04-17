@@ -831,6 +831,192 @@ namespace picmag
             }
         }
 
+        void HandlePersonScanExisting(string targetPath, bool onlyMissing)
+        {
+            var picmagDirectory = Path.Combine(targetPath, ".picmag");
+            Directory.CreateDirectory(picmagDirectory);
+
+            string databaseFullpath = Path.Combine(targetPath, relDatabaseFilepath);
+            if (!File.Exists(databaseFullpath))
+            {
+                log.PrintError(tag, "Database not found: {0}", databaseFullpath);
+                return;
+            }
+
+            using var databaseCts = new CancellationTokenSource();
+            using var md5Cache = new MD5Cache(Path.Combine(targetPath, ".picmag", "cache.txt"), log);
+            using var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseCts, log, new List<string> { "jpg", "mp4" }, md5Cache);
+
+            var candidates = database.ImageFaces.GetJpegPathsForFaceScan(onlyMissing);
+            log.PrintInfo(tag, "Person scan started. candidates={0}, only-missing={1}", candidates.Count, onlyMissing);
+
+            int analyzedFiles = 0;
+            int failedFiles = 0;
+            int detectedFaces = 0;
+
+            foreach (var relativePath in candidates)
+            {
+                var normalizedRelativePath = relativePath.Replace('\\', '/');
+                var absolutePath = Path.Combine(targetPath, normalizedRelativePath);
+                analyzedFiles++;
+
+                if (!File.Exists(absolutePath))
+                {
+                    failedFiles++;
+                    log.PrintError(tag, "Person scan skipped missing file: {0}", normalizedRelativePath);
+                    continue;
+                }
+
+                if (!FaceAnalyzer.TryAnalyzeImage(absolutePath, out var faces, out var reason))
+                {
+                    failedFiles++;
+                    log.PrintError(tag, "Person scan failed for {0}: {1}", normalizedRelativePath, reason);
+                    continue;
+                }
+
+                for (int i = 0; i < faces.Count; i++)
+                {
+                    faces[i].FaceIndex = i;
+                    database.ImageFaces.UpsertFace(normalizedRelativePath, faces[i]);
+                    detectedFaces++;
+                }
+            }
+
+            var reportPath = Path.Combine(picmagDirectory, $"person-scan-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+            var report = new StringBuilder();
+            report.AppendLine("Person Scan Report");
+            report.AppendLine($"Generated at: {DateTime.Now:O}");
+            report.AppendLine($"candidates: {candidates.Count}");
+            report.AppendLine($"analyzed_files: {analyzedFiles}");
+            report.AppendLine($"failed_files: {failedFiles}");
+            report.AppendLine($"detected_faces: {detectedFaces}");
+            report.AppendLine("embedding_model: mock-face-embedding-v1");
+            report.AppendLine("note: MVP placeholder analyzer, replace with ONNX backend for production identity quality");
+            File.WriteAllText(reportPath, report.ToString());
+
+            log.PrintInfo(tag, "Person scan finished. analyzed={0}, failed={1}, detected_faces={2}", analyzedFiles, failedFiles, detectedFaces);
+            log.PrintDebug(tag, "Person scan report written to: {0}", reportPath);
+        }
+
+        void HandlePersonAdd(string targetPath, string personName)
+        {
+            var picmagDirectory = Path.Combine(targetPath, ".picmag");
+            Directory.CreateDirectory(picmagDirectory);
+
+            string databaseFullpath = Path.Combine(targetPath, relDatabaseFilepath);
+            if (!File.Exists(databaseFullpath))
+            {
+                log.PrintError(tag, "Database not found: {0}", databaseFullpath);
+                return;
+            }
+
+            using var databaseCts = new CancellationTokenSource();
+            using var md5Cache = new MD5Cache(Path.Combine(targetPath, ".picmag", "cache.txt"), log);
+            using var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseCts, log, new List<string> { "jpg", "mp4" }, md5Cache);
+
+            var personId = database.Persons.AddOrGetId(personName);
+            log.PrintInfo(tag, "Person available: id={0}, name={1}", personId, personName.Trim());
+        }
+
+        void HandlePersonList(string targetPath)
+        {
+            var picmagDirectory = Path.Combine(targetPath, ".picmag");
+            Directory.CreateDirectory(picmagDirectory);
+
+            string databaseFullpath = Path.Combine(targetPath, relDatabaseFilepath);
+            if (!File.Exists(databaseFullpath))
+            {
+                log.PrintError(tag, "Database not found: {0}", databaseFullpath);
+                return;
+            }
+
+            using var databaseCts = new CancellationTokenSource();
+            using var md5Cache = new MD5Cache(Path.Combine(targetPath, ".picmag", "cache.txt"), log);
+            using var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseCts, log, new List<string> { "jpg", "mp4" }, md5Cache);
+
+            var persons = database.Persons.GetAll();
+            log.PrintInfo(tag, "Known persons: {0}", persons.Count);
+            foreach (var person in persons)
+            {
+                log.PrintInfo(tag, "{0} | {1}", person.Id, person.Name);
+            }
+        }
+
+        void HandlePersonLabel(string targetPath, long? faceId, string personName, bool reject, int limit)
+        {
+            var picmagDirectory = Path.Combine(targetPath, ".picmag");
+            Directory.CreateDirectory(picmagDirectory);
+
+            string databaseFullpath = Path.Combine(targetPath, relDatabaseFilepath);
+            if (!File.Exists(databaseFullpath))
+            {
+                log.PrintError(tag, "Database not found: {0}", databaseFullpath);
+                return;
+            }
+
+            using var databaseCts = new CancellationTokenSource();
+            using var md5Cache = new MD5Cache(Path.Combine(targetPath, ".picmag", "cache.txt"), log);
+            using var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseCts, log, new List<string> { "jpg", "mp4" }, md5Cache);
+
+            if (!faceId.HasValue)
+            {
+                var unlabeled = database.ImageFaces.GetUnlabeledFaces(limit);
+                log.PrintInfo(tag, "Unlabeled faces: {0}", unlabeled.Count);
+                foreach (var entry in unlabeled)
+                {
+                    log.PrintInfo(tag, "face_id={0}, image={1}, face_index={2}, confidence={3:F3}, model={4}",
+                        entry.FaceId,
+                        entry.ImagePath,
+                        entry.FaceIndex,
+                        entry.DetectionConfidence,
+                        entry.EmbeddingModel);
+                }
+
+                return;
+            }
+
+            if (!database.ImageFaces.FaceExists(faceId.Value))
+            {
+                log.PrintError(tag, "Face id not found: {0}", faceId.Value);
+                return;
+            }
+
+            if (reject)
+            {
+                database.ImageFaces.UpsertLabel(faceId.Value, null, FaceLabelStatus.Rejected);
+                log.PrintInfo(tag, "Face {0} labeled as rejected.", faceId.Value);
+                return;
+            }
+
+            var personId = database.Persons.AddOrGetId(personName);
+            database.ImageFaces.UpsertLabel(faceId.Value, personId, FaceLabelStatus.Confirmed);
+            log.PrintInfo(tag, "Face {0} labeled as person '{1}' (id={2}).", faceId.Value, personName.Trim(), personId);
+        }
+
+        void HandlePersonSearch(string targetPath, string personName)
+        {
+            var picmagDirectory = Path.Combine(targetPath, ".picmag");
+            Directory.CreateDirectory(picmagDirectory);
+
+            string databaseFullpath = Path.Combine(targetPath, relDatabaseFilepath);
+            if (!File.Exists(databaseFullpath))
+            {
+                log.PrintError(tag, "Database not found: {0}", databaseFullpath);
+                return;
+            }
+
+            using var databaseCts = new CancellationTokenSource();
+            using var md5Cache = new MD5Cache(Path.Combine(targetPath, ".picmag", "cache.txt"), log);
+            using var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseCts, log, new List<string> { "jpg", "mp4" }, md5Cache);
+
+            var paths = database.ImageFaces.GetConfirmedImagePathsByPerson(personName);
+            log.PrintInfo(tag, "Found {0} images for person '{1}'.", paths.Count, personName.Trim());
+            foreach (var path in paths)
+            {
+                log.PrintInfo(tag, path);
+            }
+        }
+
         void ExecuteCommand(CommandRequest request)
         {
             switch (request.Type)
@@ -875,6 +1061,26 @@ namespace picmag
 
                 case CommandType.UnscheduleImport:
                     HandleUnscheduleImport();
+                    break;
+
+                case CommandType.PersonScanExisting:
+                    HandlePersonScanExisting(request.TargetPath, request.PersonScanOnlyMissing);
+                    break;
+
+                case CommandType.PersonAdd:
+                    HandlePersonAdd(request.TargetPath, request.PersonName);
+                    break;
+
+                case CommandType.PersonList:
+                    HandlePersonList(request.TargetPath);
+                    break;
+
+                case CommandType.PersonLabel:
+                    HandlePersonLabel(request.TargetPath, request.FaceId, request.PersonName, request.RejectFaceLabel, request.PersonLabelListLimit);
+                    break;
+
+                case CommandType.PersonSearch:
+                    HandlePersonSearch(request.TargetPath, request.PersonName);
                     break;
             }
         }
