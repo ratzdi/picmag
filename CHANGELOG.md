@@ -9,6 +9,7 @@ All notable changes to this project are documented in this file.
 - MVP commands for manual person tagging workflow: `--person-scan-existing`, `--person-add`, `--person-list`, `--person-label`, `--person-search`.
 - SQLite persistence for persons, detected faces, embeddings, and face labels for review-driven identification.
 - Optional ONNX embedding backend for face vectors via environment variable `PICMAG_FACE_EMBEDDING_MODEL`, with automatic fallback to deterministic mock embeddings.
+- Optional ONNX face-detection backend for multi-face images via `PICMAG_FACE_DETECTION_MODEL` (with configurable threshold/NMS/max faces and fallback behavior).
 
 ## [0.5.2] - 2026-04-15
 

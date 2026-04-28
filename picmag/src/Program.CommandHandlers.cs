@@ -853,6 +853,8 @@ namespace picmag
             int analyzedFiles = 0;
             int failedFiles = 0;
             int detectedFaces = 0;
+            int fallbackFiles = 0;
+            var fallbackReasonCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var relativePath in candidates)
             {
@@ -874,6 +876,16 @@ namespace picmag
                     continue;
                 }
 
+                if (!string.IsNullOrWhiteSpace(reason))
+                {
+                    fallbackFiles++;
+                    if (!fallbackReasonCounts.ContainsKey(reason))
+                        fallbackReasonCounts[reason] = 0;
+                    fallbackReasonCounts[reason]++;
+
+                    log.PrintInfo(tag, "Person scan fallback for {0}: {1}", normalizedRelativePath, reason);
+                }
+
                 for (int i = 0; i < faces.Count; i++)
                 {
                     faces[i].FaceIndex = i;
@@ -890,8 +902,16 @@ namespace picmag
             report.AppendLine($"analyzed_files: {analyzedFiles}");
             report.AppendLine($"failed_files: {failedFiles}");
             report.AppendLine($"detected_faces: {detectedFaces}");
-            report.AppendLine("embedding_model: mock-face-embedding-v1");
-            report.AppendLine("note: MVP placeholder analyzer, replace with ONNX backend for production identity quality");
+            report.AppendLine($"fallback_files: {fallbackFiles}");
+            report.AppendLine("env: PICMAG_FACE_DETECTION_MODEL, PICMAG_FACE_EMBEDDING_MODEL");
+            if (fallbackReasonCounts.Count > 0)
+            {
+                report.AppendLine("fallback_reasons:");
+                foreach (var item in fallbackReasonCounts)
+                {
+                    report.AppendLine($"- {item.Value}x {item.Key}");
+                }
+            }
             File.WriteAllText(reportPath, report.ToString());
 
             log.PrintInfo(tag, "Person scan finished. analyzed={0}, failed={1}, detected_faces={2}", analyzedFiles, failedFiles, detectedFaces);
