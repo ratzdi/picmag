@@ -81,6 +81,62 @@ dotnet build
   - `--all`: rescans all imported JPG/JPEG rows.
   - `--dry-run` (default): performs analysis and writes report without DB updates.
   - `--apply-changes`: writes quality metadata back to DB (`quality_*` columns).
+- `--person-scan-existing <target path> [--only-missing|--all]`
+  - Detects faces in imported JPG/JPEG files and stores face metadata plus embeddings.
+  - By default, picmag loads bundled `version-RFB-320.onnx` from the installation directory.
+  - Override detection model path with `PICMAG_FACE_DETECTION_MODEL`.
+  - Optional detection tuning variables:
+    - `PICMAG_FACE_DETECTION_THRESHOLD` (default `0.30`)
+    - `PICMAG_FACE_DETECTION_NMS_IOU` (default `0.45`)
+    - `PICMAG_FACE_DETECTION_MAX_FACES` (default `32`)
+  - For difficult or historical photos with weaker contrast, a lower threshold (for example `0.20` to `0.30`) can improve recall.
+  - Optional embedding model override: `PICMAG_FACE_EMBEDDING_MODEL`.
+
+  ### Person label workflow
+
+  Typical workflow to assign a full name (`Vorname Nachname`) to detected faces:
+
+  1. Scan/imported images for faces (if not done yet):
+
+    ```bash
+    picmag --person-scan-existing <target path> --only-missing
+    ```
+
+  1. List unlabeled faces and note `face_id` values:
+
+    ```bash
+    picmag --person-label <target path> --limit 100
+    ```
+
+  1. Create or reuse a person record:
+
+    ```bash
+    picmag --person-add <target path> "Max Mustermann"
+    ```
+
+  1. Assign each `face_id` to that person:
+
+    ```bash
+    picmag --person-label <target path> --face-id 101 --person "Max Mustermann"
+    ```
+
+  1. Reject false detections when needed:
+
+    ```bash
+    picmag --person-label <target path> --face-id 115 --reject
+    ```
+
+  1. Verify labeled results:
+
+    ```bash
+    picmag --person-search <target path> "Max Mustermann"
+    ```
+
+  Tip: Label one person in batches first (all matching `face_id`s), then continue with the next person.
+- `--person-train <target path>`
+  - Builds per-person embedding profiles from confirmed labels (`image_face_labels.status='confirmed'`).
+  - Rebuilds `person_profiles` from scratch for the current DB state.
+  - Stores one profile per `(person, embedding_model)` with sample count.
 - `--schedule-import <source path> <target path> [extensions] [--delete-source] [--quality-filter off|warn|strict] [--quality-report] [--before-command "cmd"] --period daily|weekly [--time HH:mm] [--weekday mon..sun]`
   - Creates/updates a user-level `systemd` timer for periodic imports.
   - `--period daily|weekly` is required.

@@ -1,3 +1,25 @@
+// MIT License
+//
+// Copyright (c) 2025 Dimitri Ratz
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -14,6 +36,15 @@ namespace picmag
             public int FaceIndex { get; set; }
             public double DetectionConfidence { get; set; }
             public string EmbeddingModel { get; set; } = string.Empty;
+            public byte[] Embedding { get; set; } = Array.Empty<byte>();
+        }
+
+        public class ConfirmedFaceEmbeddingEntry
+        {
+            public long PersonId { get; set; }
+            public string PersonName { get; set; } = string.Empty;
+            public string EmbeddingModel { get; set; } = string.Empty;
+            public byte[] Embedding { get; set; } = Array.Empty<byte>();
         }
 
         private readonly SqliteConnection sqliteConnection;
@@ -129,7 +160,7 @@ namespace picmag
             var result = new List<UnlabeledFaceEntry>();
             using var cmd = sqliteConnection.CreateCommand();
             cmd.CommandType = CommandType.Text;
-            cmd.CommandText = @"select f.id, f.image_path, f.face_index, f.detection_confidence, f.embedding_model
+            cmd.CommandText = @"select f.id, f.image_path, f.face_index, f.detection_confidence, f.embedding_model, f.embedding
                                 from image_faces f
                                 left join image_face_labels l on l.image_face_id = f.id
                                 where l.id is null
@@ -146,7 +177,8 @@ namespace picmag
                     ImagePath = reader["image_path"].ToString() ?? string.Empty,
                     FaceIndex = Convert.ToInt32(reader["face_index"]),
                     DetectionConfidence = Convert.ToDouble(reader["detection_confidence"]),
-                    EmbeddingModel = reader["embedding_model"].ToString() ?? string.Empty
+                    EmbeddingModel = reader["embedding_model"].ToString() ?? string.Empty,
+                    Embedding = reader["embedding"] as byte[] ?? Array.Empty<byte>()
                 });
             }
 
@@ -200,6 +232,33 @@ namespace picmag
             while (reader.Read())
             {
                 result.Add(reader["image_path"].ToString() ?? string.Empty);
+            }
+
+            return result;
+        }
+
+        public List<ConfirmedFaceEmbeddingEntry> GetConfirmedEmbeddings()
+        {
+            var result = new List<ConfirmedFaceEmbeddingEntry>();
+            using var cmd = sqliteConnection.CreateCommand();
+            cmd.CommandType = CommandType.Text;
+            cmd.CommandText = @"select l.person_id, p.name, f.embedding_model, f.embedding
+                                from image_face_labels l
+                                join image_faces f on f.id = l.image_face_id
+                                join persons p on p.id = l.person_id
+                                where l.status = 'confirmed' and l.person_id is not null
+                                order by l.person_id, f.embedding_model, f.id;";
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                result.Add(new ConfirmedFaceEmbeddingEntry
+                {
+                    PersonId = Convert.ToInt64(reader["person_id"]),
+                    PersonName = reader["name"].ToString() ?? string.Empty,
+                    EmbeddingModel = reader["embedding_model"].ToString() ?? string.Empty,
+                    Embedding = reader["embedding"] as byte[] ?? Array.Empty<byte>()
+                });
             }
 
             return result;

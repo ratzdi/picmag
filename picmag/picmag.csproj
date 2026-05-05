@@ -26,5 +26,6 @@
     <Content Include="completions/picmag.bash-completion" CopyToPublishDirectory="PreserveNewest" LinuxFileMode="0644">
       <LinuxPath>/etc/bash_completion.d/picmag</LinuxPath>
     </Content>
+    <Content Include="../version-RFB-320.onnx" Link="version-RFB-320.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

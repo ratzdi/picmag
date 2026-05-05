@@ -25,6 +25,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -849,6 +850,8 @@ namespace picmag
 
             var candidates = database.ImageFaces.GetJpegPathsForFaceScan(onlyMissing);
             log.PrintInfo(tag, "Person scan started. candidates={0}, only-missing={1}", candidates.Count, onlyMissing);
+            log.PrintInfo(tag, "Face detection model selection: {0}", OnnxDetectionRuntime.GetDetectionModelSelectionSummary());
+            log.PrintInfo(tag, "Face detection parameters: {0}", OnnxDetectionRuntime.GetDetectionParametersSummary());
 
             int analyzedFiles = 0;
             int failedFiles = 0;
@@ -1037,6 +1040,343 @@ namespace picmag
             }
         }
 
+        void HandlePersonTrain(string targetPath)
+        {
+            var picmagDirectory = Path.Combine(targetPath, ".picmag");
+            Directory.CreateDirectory(picmagDirectory);
+
+            string databaseFullpath = Path.Combine(targetPath, relDatabaseFilepath);
+            if (!File.Exists(databaseFullpath))
+            {
+                log.PrintError(tag, "Database not found: {0}", databaseFullpath);
+                return;
+            }
+
+            using var databaseCts = new CancellationTokenSource();
+            using var md5Cache = new MD5Cache(Path.Combine(targetPath, ".picmag", "cache.txt"), log);
+            using var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseCts, log, new List<string> { "jpg", "mp4" }, md5Cache);
+
+            var embeddings = database.ImageFaces.GetConfirmedEmbeddings();
+            var personCount = new HashSet<long>(embeddings.Select(item => item.PersonId)).Count;
+            log.PrintInfo(tag, "Person train started. confirmed_embeddings={0}, persons={1}", embeddings.Count, personCount);
+
+            var groupedEmbeddings = new Dictionary<(long PersonId, string EmbeddingModel), List<float[]>>();
+            var personNames = new Dictionary<long, string>();
+            int invalidEmbeddings = 0;
+
+            foreach (var entry in embeddings)
+            {
+                personNames[entry.PersonId] = entry.PersonName;
+                if (!TryParseEmbedding(entry.Embedding, out var vector))
+                {
+                    invalidEmbeddings++;
+                    continue;
+                }
+
+                vector = L2NormalizeVector(vector);
+                if (vector == null)
+                {
+                    invalidEmbeddings++;
+                    continue;
+                }
+
+                var key = (entry.PersonId, entry.EmbeddingModel);
+                if (!groupedEmbeddings.TryGetValue(key, out var list))
+                {
+                    list = new List<float[]>();
+                    groupedEmbeddings[key] = list;
+                }
+
+                list.Add(vector);
+            }
+
+            database.PersonProfiles.ClearAll();
+
+            int createdProfiles = 0;
+            int totalSamples = 0;
+            foreach (var item in groupedEmbeddings)
+            {
+                var centroid = BuildCentroid(item.Value);
+                if (centroid == null)
+                    continue;
+
+                database.PersonProfiles.UpsertProfile(
+                    item.Key.PersonId,
+                    item.Key.EmbeddingModel,
+                    EmbeddingToBytes(centroid),
+                    item.Value.Count);
+
+                createdProfiles++;
+                totalSamples += item.Value.Count;
+
+                var displayName = personNames.TryGetValue(item.Key.PersonId, out var name) ? name : item.Key.PersonId.ToString();
+                log.PrintInfo(tag, "Trained profile: person='{0}', model={1}, samples={2}", displayName, item.Key.EmbeddingModel, item.Value.Count);
+            }
+
+            log.PrintInfo(tag, "Person train finished. profiles={0}, samples={1}, invalid_embeddings={2}", createdProfiles, totalSamples, invalidEmbeddings);
+        }
+
+        void HandlePersonPredict(string targetPath, int limit, double minConfidence)
+        {
+            var picmagDirectory = Path.Combine(targetPath, ".picmag");
+            Directory.CreateDirectory(picmagDirectory);
+
+            string databaseFullpath = Path.Combine(targetPath, relDatabaseFilepath);
+            if (!File.Exists(databaseFullpath))
+            {
+                log.PrintError(tag, "Database not found: {0}", databaseFullpath);
+                return;
+            }
+
+            using var databaseCts = new CancellationTokenSource();
+            using var md5Cache = new MD5Cache(Path.Combine(targetPath, ".picmag", "cache.txt"), log);
+            using var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseCts, log, new List<string> { "jpg", "mp4" }, md5Cache);
+
+            // Get all profiles grouped by model
+            var profilesByModel = new Dictionary<string, List<(long PersonId, float[] Embedding)>>();
+            var personNames = new Dictionary<long, string>();
+            var profiles = database.PersonProfiles.GetAllEmbeddings();
+
+            foreach (var profile in profiles)
+            {
+                if (!TryParseEmbedding(profile.Embedding, out var vector))
+                    continue;
+
+                vector = L2NormalizeVector(vector);
+                if (vector == null)
+                    continue;
+
+                if (!profilesByModel.TryGetValue(profile.EmbeddingModel, out var list))
+                {
+                    list = new List<(long, float[])>();
+                    profilesByModel[profile.EmbeddingModel] = list;
+                }
+                list.Add((profile.PersonId, vector));
+                personNames[profile.PersonId] = profile.PersonId.ToString(); // TODO: join with person name
+            }
+
+            log.PrintInfo(tag, "Person predict started. profiles={0}, models={1}", profiles.Count, profilesByModel.Count);
+
+            // Get all unlabeled faces
+            var unlabeledFaces = database.ImageFaces.GetUnlabeledFaces(limit * 10); // Get more faces to analyze
+            int totalFaces = 0;
+            int predictionsCreated = 0;
+
+            // Clear old suggestions
+            database.PersonPredictions.ClearSuggested();
+
+            foreach (var face in unlabeledFaces)
+            {
+                totalFaces++;
+                if (!TryParseEmbedding(face.Embedding, out var faceVector))
+                    continue;
+
+                faceVector = L2NormalizeVector(faceVector);
+                if (faceVector == null)
+                    continue;
+
+                // Find best match in profiles for this model
+                if (!profilesByModel.TryGetValue(face.EmbeddingModel, out var profilesForModel))
+                    continue;
+
+                double bestScore = 0;
+                long bestPersonId = -1;
+
+                foreach (var (personId, profileEmbedding) in profilesForModel)
+                {
+                    var score = ComputeCosineSimilarity(faceVector, profileEmbedding);
+                    score = Math.Max(0d, Math.Min(1d, score));
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        bestPersonId = personId;
+                    }
+                }
+
+                // Store prediction if above threshold
+                if (bestScore >= minConfidence && bestPersonId > -1)
+                {
+                    database.PersonPredictions.UpsertPrediction(
+                        face.FaceId,
+                        bestPersonId,
+                        bestScore, 
+                        PredictionStatus.Suggested);
+
+                    predictionsCreated++;
+
+                    if (predictionsCreated <= limit)
+                    {
+                        log.PrintInfo(tag, "Suggestion: face_id={0}, person_id={1}, confidence={2:F3}", face.FaceId, bestPersonId, bestScore);
+                    }
+                }
+            }
+
+            log.PrintInfo(tag, "Person predict finished. faces_analyzed={0}, predictions_created={1}, min_confidence={2:F2}", totalFaces, predictionsCreated, minConfidence);
+        }
+
+        void HandlePersonReview(string targetPath, string predictionIdStr, string action)
+        {
+            string databaseFullpath = Path.Combine(targetPath, relDatabaseFilepath);
+            if (!File.Exists(databaseFullpath))
+            {
+                log.PrintError(tag, "Database not found: {0}", databaseFullpath);
+                return;
+            }
+
+            if (!long.TryParse(predictionIdStr, out var predictionId))
+            {
+                log.PrintError(tag, "Invalid prediction ID: {0}", predictionIdStr);
+                return;
+            }
+
+            using var databaseCts = new CancellationTokenSource();
+            using var md5Cache = new MD5Cache(Path.Combine(targetPath, ".picmag", "cache.txt"), log);
+            using var database = new Database(targetPath, "URI=file:" + databaseFullpath, databaseCts, log, new List<string> { "jpg", "mp4" }, md5Cache);
+
+            // Get prediction
+            var predictions = database.PersonPredictions.GetSuggestedPredictions(1000);
+            var prediction = predictions.FirstOrDefault(p => p.PredictionId == predictionId);
+            
+            if (prediction == null)
+            {
+                log.PrintError(tag, "Prediction not found: {0}", predictionId);
+                return;
+            }
+
+            if (action == "confirm")
+            {
+                // Update prediction status
+                database.PersonPredictions.UpsertPrediction(
+                    prediction.FaceId,
+                    prediction.PersonId,
+                    prediction.ConfidenceScore,
+                    PredictionStatus.Confirmed);
+
+                // Add label to image_face_labels
+                database.ImageFaces.UpsertLabel(
+                    prediction.FaceId,
+                    prediction.PersonId,
+                    FaceLabelStatus.Confirmed);
+
+                log.PrintInfo(tag, "Prediction confirmed: face_id={0}, person_id={1}", prediction.FaceId, prediction.PersonId);
+            }
+            else if (action == "reject")
+            {
+                // Update prediction status
+                database.PersonPredictions.UpsertPrediction(
+                    prediction.FaceId,
+                    prediction.PersonId,
+                    prediction.ConfidenceScore,
+                    PredictionStatus.Rejected);
+
+                log.PrintInfo(tag, "Prediction rejected: face_id={0}, person_id={1}", prediction.FaceId, prediction.PersonId);
+            }
+        }
+
+        double ComputeCosineSimilarity(float[] a, float[] b)
+        {
+            if (a == null || b == null || a.Length != b.Length || a.Length == 0)
+                return 0;
+
+            double dotProduct = 0;
+            for (int i = 0; i < a.Length; i++)
+                dotProduct += a[i] * b[i];
+
+            return dotProduct;
+        }
+
+        bool TryParseEmbedding(byte[] embeddingBytes, out float[] embedding)
+        {
+            embedding = null;
+            if (embeddingBytes == null || embeddingBytes.Length < sizeof(float) || embeddingBytes.Length % sizeof(float) != 0)
+                return false;
+
+            int length = embeddingBytes.Length / sizeof(float);
+            embedding = new float[length];
+            Buffer.BlockCopy(embeddingBytes, 0, embedding, 0, embeddingBytes.Length);
+            return true;
+        }
+
+        float[] L2NormalizeVector(float[] values)
+        {
+            if (values == null || values.Length == 0)
+                return null;
+
+            double maxAbs = 0d;
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (float.IsNaN(values[i]) || float.IsInfinity(values[i]))
+                    return null;
+
+                var abs = Math.Abs((double)values[i]);
+                if (abs > maxAbs)
+                    maxAbs = abs;
+            }
+
+            if (maxAbs <= 1e-12d)
+                return null;
+
+            // Scale by max component to avoid overflow for very large vectors.
+            double scaledSum = 0d;
+            for (int i = 0; i < values.Length; i++)
+            {
+                var scaled = values[i] / maxAbs;
+                scaledSum += scaled * scaled;
+            }
+
+            if (scaledSum <= 1e-12d)
+                return null;
+
+            var norm = maxAbs * Math.Sqrt(scaledSum);
+            if (norm <= 1e-12d)
+                return null;
+
+            var result = new float[values.Length];
+            for (int i = 0; i < values.Length; i++)
+                result[i] = (float)(values[i] / norm);
+
+            return result;
+        }
+
+        float[] BuildCentroid(List<float[]> vectors)
+        {
+            if (vectors == null || vectors.Count == 0)
+                return null;
+
+            int dim = vectors[0].Length;
+            var sum = new float[dim];
+            int valid = 0;
+
+            for (int i = 0; i < vectors.Count; i++)
+            {
+                var vector = vectors[i];
+                if (vector == null || vector.Length != dim)
+                    continue;
+
+                for (int j = 0; j < dim; j++)
+                    sum[j] += vector[j];
+                valid++;
+            }
+
+            if (valid == 0)
+                return null;
+
+            for (int i = 0; i < dim; i++)
+                sum[i] /= valid;
+
+            return L2NormalizeVector(sum);
+        }
+
+        byte[] EmbeddingToBytes(float[] values)
+        {
+            if (values == null || values.Length == 0)
+                return Array.Empty<byte>();
+
+            var bytes = new byte[values.Length * sizeof(float)];
+            Buffer.BlockCopy(values, 0, bytes, 0, bytes.Length);
+            return bytes;
+        }
+
         void ExecuteCommand(CommandRequest request)
         {
             switch (request.Type)
@@ -1101,6 +1441,18 @@ namespace picmag
 
                 case CommandType.PersonSearch:
                     HandlePersonSearch(request.TargetPath, request.PersonName);
+                    break;
+
+                case CommandType.PersonTrain:
+                    HandlePersonTrain(request.TargetPath);
+                    break;
+
+                case CommandType.PersonPredict:
+                    HandlePersonPredict(request.TargetPath, request.PersonPredictLimit, request.PersonPredictMinConfidence);
+                    break;
+
+                case CommandType.PersonReview:
+                    HandlePersonReview(request.TargetPath, request.PersonReviewPredictionId, request.PersonReviewAction);
                     break;
             }
         }

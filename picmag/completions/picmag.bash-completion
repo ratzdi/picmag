@@ -4,11 +4,14 @@ _picmag_completion()
     _init_completion -n : || return
 
     local global_flags="-h --version -v"
-    local commands="-i -d --sanity-checks --migrate-cache --quality-review --quality-scan-existing --person-scan-existing --person-add --person-list --person-label --person-search --schedule-import --unschedule-import"
+    local commands="-i -d --sanity-checks --migrate-cache --quality-review --quality-scan-existing --person-scan-existing --person-add --person-list --person-label --person-search --person-train --person-predict --person-review --schedule-import --unschedule-import"
 
     case "$prev" in
         --quality-filter)
             COMPREPLY=( $(compgen -W "off warn strict" -- "$cur") )
+            return 0
+            ;;
+        --face-id|--limit)
             return 0
             ;;
         --verdict)
@@ -27,7 +30,7 @@ _picmag_completion()
             COMPREPLY=( $(compgen -W "mon tue wed thu fri sat sun" -- "$cur") )
             return 0
             ;;
-        -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing|--person-scan-existing|--person-add|--person-list|--person-label|--person-search|--schedule-import|--unschedule-import)
+        -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing|--person-scan-existing|--person-add|--person-list|--person-label|--person-search|--person-train|--schedule-import|--unschedule-import)
             COMPREPLY=( $(compgen -d -- "$cur") )
             return 0
             ;;
@@ -36,7 +39,7 @@ _picmag_completion()
     local top_command=""
     for ((i=1; i<${#words[@]}; i++)); do
         case "${words[i]}" in
-            -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing|--person-scan-existing|--person-add|--person-list|--person-label|--person-search|--schedule-import|--unschedule-import)
+            -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing|--person-scan-existing|--person-add|--person-list|--person-label|--person-search|--person-train|--schedule-import|--unschedule-import)
                 top_command="${words[i]}"
                 break
                 ;;
@@ -126,10 +129,47 @@ _picmag_completion()
                 COMPREPLY=( $(compgen -d -- "$cur") )
                 return 0
             fi
-            COMPREPLY=( $(compgen -W "--limit --face-id --person --reject" -- "$cur") )
+
+            # List mode: allow --limit and optional transition to label mode via --face-id.
+            # Label mode starts once --face-id is present and then expects --person or --reject.
+            local has_face_id=0
+            local has_person=0
+            local has_reject=0
+            for ((i=2; i<${#words[@]}; i++)); do
+                case "${words[i]}" in
+                    --face-id)
+                        has_face_id=1
+                        ;;
+                    --person)
+                        has_person=1
+                        ;;
+                    --reject)
+                        has_reject=1
+                        ;;
+                esac
+            done
+
+            if [[ $has_face_id -eq 0 ]]; then
+                COMPREPLY=( $(compgen -W "--limit --face-id" -- "$cur") )
+                return 0
+            fi
+
+            if [[ $has_person -eq 0 && $has_reject -eq 0 ]]; then
+                COMPREPLY=( $(compgen -W "--person --reject" -- "$cur") )
+                return 0
+            fi
+
+            COMPREPLY=( )
             return 0
             ;;
         --person-search)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            return 0
+            ;;
+        --person-train)
             if [[ $cword -eq 2 ]]; then
                 COMPREPLY=( $(compgen -d -- "$cur") )
                 return 0

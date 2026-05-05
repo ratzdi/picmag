@@ -44,7 +44,10 @@ namespace picmag
             PersonAdd,
             PersonList,
             PersonLabel,
-            PersonSearch
+            PersonSearch,
+            PersonTrain,
+            PersonPredict,
+            PersonReview
         }
 
         private enum SchedulePeriod
@@ -77,6 +80,10 @@ namespace picmag
             public long? FaceId { get; set; }
             public bool RejectFaceLabel { get; set; }
             public int PersonLabelListLimit { get; set; } = 50;
+            public int PersonPredictLimit { get; set; } = 100;
+            public double PersonPredictMinConfidence { get; set; } = 0.75;
+            public string PersonReviewPredictionId { get; set; }
+            public string PersonReviewAction { get; set; }
         }
 
         void Start(string[] args)
@@ -171,6 +178,15 @@ namespace picmag
                 case "--person-search":
                     return TryParsePersonSearchCommand(args, out request);
 
+                case "--person-train":
+                    return TryParsePersonTrainCommand(args, out request);
+
+                case "--person-predict":
+                    return TryParsePersonPredictCommand(args, out request);
+
+                case "--person-review":
+                    return TryParsePersonReviewCommand(args, out request);
+
                 default:
                     return false;
             }
@@ -251,6 +267,94 @@ namespace picmag
                 PersonName = args[2]
             };
             return !string.IsNullOrWhiteSpace(request.PersonName);
+        }
+
+        bool TryParsePersonTrainCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length != 2)
+                return false;
+
+            request = new CommandRequest
+            {
+                Type = CommandType.PersonTrain,
+                TargetPath = args[1]
+            };
+            return true;
+        }
+
+        bool TryParsePersonPredictCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length < 2)
+                return false;
+
+            var parsed = new CommandRequest
+            {
+                Type = CommandType.PersonPredict,
+                TargetPath = args[1],
+                PersonPredictLimit = 100,
+                PersonPredictMinConfidence = 0.75
+            };
+
+            for (int i = 2; i < args.Length; i++)
+            {
+                if (args[i] == "--limit")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    if (!int.TryParse(args[i + 1], out var limit) || limit <= 0)
+                        return false;
+
+                    parsed.PersonPredictLimit = limit;
+                    i++;
+                }
+                else if (args[i] == "--min-confidence")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    if (!double.TryParse(args[i + 1], CultureInfo.InvariantCulture, out var minConf) || minConf < 0 || minConf > 1)
+                        return false;
+
+                    parsed.PersonPredictMinConfidence = minConf;
+                    i++;
+                }
+                else if (args[i].StartsWith("-"))
+                {
+                    return false;
+                }
+            }
+
+            request = parsed;
+            return true;
+        }
+
+        bool TryParsePersonReviewCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length != 4)
+                return false;
+
+            var targetPath = args[1];
+            var prediction_id = args[2];
+            var action = args[3].ToLowerInvariant();
+
+            if (string.IsNullOrWhiteSpace(targetPath))
+                return false;
+
+            if (action != "--accept" && action != "--reject")
+                return false;
+
+            request = new CommandRequest
+            {
+                Type = CommandType.PersonReview,
+                TargetPath = targetPath,
+                PersonReviewPredictionId = prediction_id,
+                PersonReviewAction = action == "--accept" ? "confirm" : "reject"
+            };
+            return true;
         }
 
         bool TryParsePersonLabelCommand(string[] args, out CommandRequest request)

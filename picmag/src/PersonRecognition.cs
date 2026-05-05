@@ -1,3 +1,25 @@
+// MIT License
+//
+// Copyright (c) 2025 Dimitri Ratz
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -36,7 +58,7 @@ namespace picmag
     {
         private const int EmbeddingInputSize = 112;
         private const int DetectionInputSize = 640;
-        private const float DefaultDetectionThreshold = 0.35f;
+        private const float DefaultDetectionThreshold = 0.30f;
         private const float DefaultNmsIoUThreshold = 0.45f;
         private const int DefaultMaxFaces = 32;
 
@@ -70,24 +92,29 @@ namespace picmag
                 if (LooksLikeEmbeddingModelPath(configuredDetectionModel))
                 {
                     reason = "configured detection model looks like an embedding model (e.g. ArcFace). Set PICMAG_FACE_DETECTION_MODEL to a face detector model";
+                    return false;
                 }
-                else if (OnnxDetectionRuntime.TryGetInstance(out var detectionRuntime))
+
+                if (OnnxDetectionRuntime.TryGetInstance(out var detectionRuntime))
                 {
                     if (!TryDetectFacesWithOnnx(absoluteFilePath, width, height, detectionRuntime, out faceRegions, out var detectionReason))
                     {
                         reason = string.IsNullOrWhiteSpace(detectionReason)
-                            ? "onnx detection fallback to centered region"
-                            : "onnx detection fallback to centered region: " + detectionReason;
+                            ? "onnx detection failed: no faces detected"
+                            : "onnx detection failed: " + detectionReason;
+                        return false;
                     }
+                }
+                else
+                {
+                    reason = "no detection model available";
+                    return false;
                 }
 
                 if (faceRegions.Count == 0)
                 {
-                    faceRegions.Add(new DetectedFaceRegion
-                    {
-                        Rect = CreateCenteredRect(width, height),
-                        Confidence = 0.5f
-                    });
+                    reason = "detection completed but no faces found";
+                    return false;
                 }
 
                 var embeddingModel = "mock-face-embedding-v1";
@@ -172,15 +199,26 @@ namespace picmag
                 using var image = Image.Load<Rgb24>(absoluteFilePath);
                 using var resized = image.Clone(ctx => ctx.Resize(runtime.InputWidth, runtime.InputHeight));
                 var inputTensor = new DenseTensor<float>(new[] { 1, 3, runtime.InputHeight, runtime.InputWidth });
+                var useUltraFaceNormalization = runtime.ModelName.Contains("rfb", StringComparison.OrdinalIgnoreCase)
+                    || runtime.ModelName.Contains("ultraface", StringComparison.OrdinalIgnoreCase);
 
                 for (int y = 0; y < runtime.InputHeight; y++)
                 {
                     for (int x = 0; x < runtime.InputWidth; x++)
                     {
                         var px = resized[x, y];
-                        inputTensor[0, 0, y, x] = px.R / 255f;
-                        inputTensor[0, 1, y, x] = px.G / 255f;
-                        inputTensor[0, 2, y, x] = px.B / 255f;
+                        if (useUltraFaceNormalization)
+                        {
+                            inputTensor[0, 0, y, x] = (px.R - 127f) / 128f;
+                            inputTensor[0, 1, y, x] = (px.G - 127f) / 128f;
+                            inputTensor[0, 2, y, x] = (px.B - 127f) / 128f;
+                        }
+                        else
+                        {
+                            inputTensor[0, 0, y, x] = px.R / 255f;
+                            inputTensor[0, 1, y, x] = px.G / 255f;
+                            inputTensor[0, 2, y, x] = px.B / 255f;
+                        }
                     }
                 }
 
@@ -188,15 +226,42 @@ namespace picmag
                 using var rawOutputs = runtime.Session.Run(new[] { input });
 
                 var candidates = new List<DetectedFaceRegion>();
+                var debugOutputs = new List<string>();
+                var scoresTensor = (DenseTensor<float>)null;
+                var boxesTensor = (DenseTensor<float>)null;
+
                 foreach (var output in rawOutputs)
                 {
                     var tensor = output.AsTensor<float>();
-                    ParseDetectionTensor(tensor, runtime, originalWidth, originalHeight, candidates);
+                    var dims = string.Join(",", tensor.Dimensions.ToArray());
+                    debugOutputs.Add($"{output.Name}: [{dims}]");
+
+                    if (output.Name.Contains("score", StringComparison.OrdinalIgnoreCase))
+                        scoresTensor = tensor as DenseTensor<float>;
+                    else if (output.Name.Contains("box", StringComparison.OrdinalIgnoreCase))
+                        boxesTensor = tensor as DenseTensor<float>;
+                    else if (scoresTensor == null)
+                        scoresTensor = tensor as DenseTensor<float>;
+                    else if (boxesTensor == null)
+                        boxesTensor = tensor as DenseTensor<float>;
+                }
+
+                if (scoresTensor != null && boxesTensor != null)
+                {
+                    ParseDetectionPair(scoresTensor, boxesTensor, runtime, originalWidth, originalHeight, candidates);
+                }
+                else
+                {
+                    foreach (var output in rawOutputs)
+                    {
+                        var tensor = output.AsTensor<float>();
+                        ParseDetectionTensor(tensor, runtime, originalWidth, originalHeight, candidates);
+                    }
                 }
 
                 if (candidates.Count == 0)
                 {
-                    reason = "no faces above threshold";
+                    reason = $"no faces above threshold (outputs: {string.Join(" | ", debugOutputs)})";
                     return false;
                 }
 
@@ -214,6 +279,207 @@ namespace picmag
                 reason = ex.Message;
                 return false;
             }
+        }
+
+        private static void ParseDetectionPair(
+            Tensor<float> scoresTensor,
+            Tensor<float> boxesTensor,
+            OnnxDetectionRuntime runtime,
+            int originalWidth,
+            int originalHeight,
+            List<DetectedFaceRegion> candidates)
+        {
+            // UltraFace/RFB-320 outputs:
+            // scores: [1, N, 2] -> [background, face]
+            // boxes:  [1, N, 4] -> encoded SSD offsets [dx, dy, dw, dh]
+            var scoresDims = scoresTensor.Dimensions.ToArray();
+            var boxesDims = boxesTensor.Dimensions.ToArray();
+
+            if (scoresDims.Length < 2 || boxesDims.Length < 2)
+                return;
+
+            var numAnchors = scoresDims.Length >= 2 ? scoresDims[scoresDims.Length - 2] : 0;
+            if (numAnchors <= 0 || boxesDims[boxesDims.Length - 2] != numAnchors)
+                return;
+
+            var scoresData = scoresTensor.ToArray();
+            var boxesData = boxesTensor.ToArray();
+
+            var strideScore = scoresDims.Length >= 3 ? scoresDims[scoresDims.Length - 1] : 1;
+            var strideBox = boxesDims.Length >= 3 ? boxesDims[boxesDims.Length - 1] : 1;
+            var priors = GenerateUltraFacePriors(runtime.InputWidth, runtime.InputHeight);
+            var useUltraFaceDecode = strideBox >= 4 && priors.Count == numAnchors;
+
+            const float centerVariance = 0.1f;
+            const float sizeVariance = 0.2f;
+
+            for (int i = 0; i < numAnchors; i++)
+            {
+                float faceScore = 0f;
+
+                if (strideScore >= 2)
+                {
+                    var nonFaceIdx = i * strideScore;
+                    var faceIdx = i * strideScore + 1;
+                    if (faceIdx < scoresData.Length && nonFaceIdx < scoresData.Length)
+                    {
+                        var bg = scoresData[nonFaceIdx];
+                        var face = scoresData[faceIdx];
+
+                        // Some exports output probabilities, others output logits.
+                        // Keep probabilities as-is when they are already normalized.
+                        var looksLikeProbabilities =
+                            bg >= 0f && bg <= 1f &&
+                            face >= 0f && face <= 1f &&
+                            Math.Abs((bg + face) - 1f) < 0.05f;
+
+                        if (looksLikeProbabilities)
+                        {
+                            faceScore = face;
+                        }
+                        else
+                        {
+                            var maxLogit = Math.Max(bg, face);
+                            var expBg = Math.Exp(bg - maxLogit);
+                            var expFace = Math.Exp(face - maxLogit);
+                            var denom = expBg + expFace;
+                            if (denom > double.Epsilon)
+                                faceScore = (float)(expFace / denom);
+                        }
+                    }
+                }
+                else if (strideScore == 1)
+                {
+                    if (i < scoresData.Length)
+                        faceScore = scoresData[i];
+                }
+
+                if (faceScore < runtime.DetectionThreshold)
+                    continue;
+
+                if (strideBox < 4)
+                    continue;
+
+                var x_idx = i * strideBox;
+                var y_idx = i * strideBox + 1;
+                var w_idx = i * strideBox + 2;
+                var h_idx = i * strideBox + 3;
+
+                if (x_idx >= boxesData.Length || y_idx >= boxesData.Length
+                    || w_idx >= boxesData.Length || h_idx >= boxesData.Length)
+                    continue;
+
+                var x = boxesData[x_idx];
+                var y = boxesData[y_idx];
+                var w = boxesData[w_idx];
+                var h = boxesData[h_idx];
+
+                Rectangle rect;
+                if (useUltraFaceDecode)
+                {
+                    var prior = priors[i];
+                    var centerX = (x * centerVariance * prior.Width) + prior.CenterX;
+                    var centerY = (y * centerVariance * prior.Height) + prior.CenterY;
+                    var boxWidth = MathF.Exp(w * sizeVariance) * prior.Width;
+                    var boxHeight = MathF.Exp(h * sizeVariance) * prior.Height;
+
+                    var xMin = centerX - (boxWidth / 2f);
+                    var yMin = centerY - (boxHeight / 2f);
+                    var xMax = centerX + (boxWidth / 2f);
+                    var yMax = centerY + (boxHeight / 2f);
+
+                    if (!TryConvertNormalizedCornersToRect(xMin, yMin, xMax, yMax, originalWidth, originalHeight, out rect))
+                        continue;
+                }
+                else if (!TryConvertDetectionToRect(x, y, w, h, runtime, originalWidth, originalHeight, out rect))
+                {
+                    continue;
+                }
+
+                candidates.Add(new DetectedFaceRegion
+                {
+                    Rect = rect,
+                    Confidence = faceScore
+                });
+            }
+        }
+
+        private static List<PriorBox> GenerateUltraFacePriors(int inputWidth, int inputHeight)
+        {
+            var priors = new List<PriorBox>(4420);
+
+            int[] strides = { 8, 16, 32, 64 };
+            int[][] minBoxes =
+            {
+                new[] { 10, 16, 24 },
+                new[] { 32, 48 },
+                new[] { 64, 96 },
+                new[] { 128, 192, 256 }
+            };
+
+            for (int level = 0; level < strides.Length; level++)
+            {
+                var stride = strides[level];
+                var featureMapWidth = (int)Math.Ceiling(inputWidth / (float)stride);
+                var featureMapHeight = (int)Math.Ceiling(inputHeight / (float)stride);
+
+                for (int y = 0; y < featureMapHeight; y++)
+                {
+                    for (int x = 0; x < featureMapWidth; x++)
+                    {
+                        foreach (var minBox in minBoxes[level])
+                        {
+                            var centerX = (x + 0.5f) * stride / inputWidth;
+                            var centerY = (y + 0.5f) * stride / inputHeight;
+                            var width = minBox / (float)inputWidth;
+                            var height = minBox / (float)inputHeight;
+
+                            priors.Add(new PriorBox
+                            {
+                                CenterX = centerX,
+                                CenterY = centerY,
+                                Width = width,
+                                Height = height
+                            });
+                        }
+                    }
+                }
+            }
+
+            return priors;
+        }
+
+        private static bool TryConvertNormalizedCornersToRect(
+            float xMin,
+            float yMin,
+            float xMax,
+            float yMax,
+            int originalWidth,
+            int originalHeight,
+            out Rectangle rect)
+        {
+            rect = Rectangle.Empty;
+
+            if (xMax <= xMin || yMax <= yMin)
+                return false;
+
+            var left = xMin * originalWidth;
+            var top = yMin * originalHeight;
+            var right = xMax * originalWidth;
+            var bottom = yMax * originalHeight;
+
+            var x0 = Math.Max(0, (int)Math.Round(left, MidpointRounding.AwayFromZero));
+            var y0 = Math.Max(0, (int)Math.Round(top, MidpointRounding.AwayFromZero));
+            var x1 = Math.Min(originalWidth, (int)Math.Round(right, MidpointRounding.AwayFromZero));
+            var y1 = Math.Min(originalHeight, (int)Math.Round(bottom, MidpointRounding.AwayFromZero));
+
+            var width = x1 - x0;
+            var height = y1 - y0;
+            if (width < 4 || height < 4)
+                return false;
+
+            rect = new Rectangle(x0, y0, width, height);
+            return true;
         }
 
         private static void ParseDetectionTensor(
@@ -514,6 +780,14 @@ namespace picmag
         public float Confidence { get; set; }
     }
 
+    internal sealed class PriorBox
+    {
+        public float CenterX { get; set; }
+        public float CenterY { get; set; }
+        public float Width { get; set; }
+        public float Height { get; set; }
+    }
+
     internal sealed class OnnxEmbeddingRuntime
     {
         public InferenceSession Session { get; }
@@ -600,8 +874,9 @@ namespace picmag
 
     internal sealed class OnnxDetectionRuntime
     {
+        private const string PackagedDetectionModelFilename = "version-RFB-320.onnx";
         private const int DefaultDetectionInputSize = 640;
-        private const float DefaultDetectionThreshold = 0.35f;
+        private const float DefaultDetectionThreshold = 0.30f;
         private const float DefaultNmsIoUThreshold = 0.45f;
         private const int DefaultMaxFaces = 32;
 
@@ -638,6 +913,37 @@ namespace picmag
         private static OnnxDetectionRuntime instance;
         private static bool initialized;
 
+        public static string GetDetectionModelSelectionSummary()
+        {
+            var fromEnvironment = Environment.GetEnvironmentVariable("PICMAG_FACE_DETECTION_MODEL");
+            if (!string.IsNullOrWhiteSpace(fromEnvironment))
+            {
+                var configured = fromEnvironment.Trim();
+                if (!Path.IsPathRooted(configured))
+                    configured = Path.GetFullPath(configured, Environment.CurrentDirectory);
+
+                if (File.Exists(configured))
+                    return $"env override: {configured}";
+
+                return $"env override configured but file missing: {configured}";
+            }
+
+            var bundled = Path.Combine(AppContext.BaseDirectory, PackagedDetectionModelFilename);
+            if (File.Exists(bundled))
+                return $"bundled default: {bundled}";
+
+            return $"no detection model available (expected bundled model at {bundled})";
+        }
+
+        public static string GetDetectionParametersSummary()
+        {
+            var threshold = ReadFloatEnv("PICMAG_FACE_DETECTION_THRESHOLD", DefaultDetectionThreshold, 0.01f, 0.99f);
+            var iou = ReadFloatEnv("PICMAG_FACE_DETECTION_NMS_IOU", DefaultNmsIoUThreshold, 0.05f, 0.95f);
+            var maxFaces = ReadIntEnv("PICMAG_FACE_DETECTION_MAX_FACES", DefaultMaxFaces, 1, 256);
+
+            return $"threshold={threshold:F2}, nms_iou={iou:F2}, max_faces={maxFaces}";
+        }
+
         public static bool TryGetInstance(out OnnxDetectionRuntime runtime)
         {
             runtime = null;
@@ -663,13 +969,9 @@ namespace picmag
 
         private static OnnxDetectionRuntime Create()
         {
-            var modelPath = Environment.GetEnvironmentVariable("PICMAG_FACE_DETECTION_MODEL");
+            var modelPath = ResolveDetectionModelPath();
             if (string.IsNullOrWhiteSpace(modelPath))
                 return null;
-
-            modelPath = modelPath.Trim();
-            if (!Path.IsPathRooted(modelPath))
-                modelPath = Path.GetFullPath(modelPath, Environment.CurrentDirectory);
 
             if (!File.Exists(modelPath))
                 return null;
@@ -728,6 +1030,21 @@ namespace picmag
             {
                 return null;
             }
+        }
+
+        private static string ResolveDetectionModelPath()
+        {
+            var fromEnvironment = Environment.GetEnvironmentVariable("PICMAG_FACE_DETECTION_MODEL");
+            if (!string.IsNullOrWhiteSpace(fromEnvironment))
+            {
+                var configured = fromEnvironment.Trim();
+                if (!Path.IsPathRooted(configured))
+                    configured = Path.GetFullPath(configured, Environment.CurrentDirectory);
+
+                return configured;
+            }
+
+            return Path.Combine(AppContext.BaseDirectory, PackagedDetectionModelFilename);
         }
 
         private static float ReadFloatEnv(string name, float fallback, float min, float max)
