@@ -30,7 +30,7 @@ _picmag_completion()
             COMPREPLY=( $(compgen -W "mon tue wed thu fri sat sun" -- "$cur") )
             return 0
             ;;
-        -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing|--person-scan-existing|--person-add|--person-list|--person-label|--person-search|--person-train|--schedule-import|--unschedule-import)
+        -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing|--person-scan-existing|--person-add|--person-list|--person-label|--person-search|--person-train|--person-predict|--person-review|--schedule-import|--unschedule-import)
             COMPREPLY=( $(compgen -d -- "$cur") )
             return 0
             ;;
@@ -39,7 +39,7 @@ _picmag_completion()
     local top_command=""
     for ((i=1; i<${#words[@]}; i++)); do
         case "${words[i]}" in
-            -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing|--person-scan-existing|--person-add|--person-list|--person-label|--person-search|--person-train|--schedule-import|--unschedule-import)
+            -i|-d|--sanity-checks|--migrate-cache|--quality-review|--quality-scan-existing|--person-scan-existing|--person-add|--person-list|--person-label|--person-search|--person-train|--person-predict|--person-review|--schedule-import|--unschedule-import)
                 top_command="${words[i]}"
                 break
                 ;;
@@ -172,6 +172,25 @@ _picmag_completion()
         --person-train)
             if [[ $cword -eq 2 ]]; then
                 COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            return 0
+            ;;
+        --person-predict)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            COMPREPLY=( $(compgen -W "--limit --min-confidence" -- "$cur") )
+            return 0
+            ;;
+        --person-review)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -d -- "$cur") )
+                return 0
+            fi
+            if [[ $cword -eq 4 ]]; then
+                COMPREPLY=( $(compgen -W "--accept --reject" -- "$cur") )
                 return 0
             fi
             return 0
