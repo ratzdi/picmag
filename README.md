@@ -41,6 +41,7 @@ dotnet build
 - Person recognition workflow: [docs/person-recognition.md](docs/person-recognition.md)
 - Packaging (Debian/Raspberry Pi): [docs/packaging.md](docs/packaging.md)
 - Shell completion: [docs/shell-completion.md](docs/shell-completion.md)
+- Model license status: [docs/model-licenses.md](docs/model-licenses.md)
 - Versioning policy: [VERSIONING.md](VERSIONING.md)
 
 ## Tests

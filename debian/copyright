@@ -22,3 +22,52 @@ License: MIT
  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
+
+Files: picmag/tests/in/5-person/train/*.jpg picmag/tests/in/5-person/probe/*.jpg picmag/tests/in/5-person/probe-negative/*.jpg
+Copyright:
+ Various photographers and organizations listed in picmag/tests/in/5-person/LICENSES.tsv
+License: CC-BY-and-PD
+ Test images are sourced from Wikimedia Commons.
+ Per-file attribution and source metadata are documented in
+ picmag/tests/in/5-person/LICENSES.tsv.
+ .
+ This dataset includes files under Creative Commons Attribution licenses
+ (for example CC BY 2.0, CC BY 3.0, CC BY 4.0) and Public Domain files.
+ Redistribution must preserve required attribution for CC BY files.
+
+Files: version-RFB-320.onnx
+Copyright: 2019, linzai
+License: MIT
+
+Files: arcfaceresnet100-8.onnx
+Copyright: ONNX Model Zoo contributors
+License: Apache-2.0
+ Licensed under the Apache License, Version 2.0.
+ On Debian systems, the full license text is available at
+ /usr/share/common-licenses/Apache-2.0.
+
+Files: retinanet-9.onnx
+Copyright: ONNX Model Zoo contributors
+License: BSD-3-Clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+ .
+ 1. Redistributions of source code must retain the above copyright notice,
+	 this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+	 this list of conditions and the following disclaimer in the documentation
+	 and/or other materials provided with the distribution.
+ 3. Neither the name of the copyright holder nor the names of its
+	 contributors may be used to endorse or promote products derived from this
+	 software without specific prior written permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
