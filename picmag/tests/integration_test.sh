@@ -285,7 +285,7 @@ scan_report_apply=$(ls -1t ./out/13/.picmag/quality-scan-existing-*.log | head -
 test -n "$scan_report_apply"
 grep -q "mode: apply-changes" "$scan_report_apply"
 
-# Ingegration Test 16: person recognition with real person photos (5 train + 5 probe)
+# Integration Test 16: person recognition with real person photos (5 train + 5 probe)
 
 person_dataset_root="${PICMAG_PERSON_ITEST_DATASET:-./in/5-person}"
 train_dataset_dir="$person_dataset_root/train"
