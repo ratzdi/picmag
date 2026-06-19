@@ -2,3 +2,11 @@
 bin
 obj
 picmag/tests/out
+
+# Optional local real-person dataset for integration test 16
+picmag/tests/in/5-person/train/*
+!picmag/tests/in/5-person/train/.gitkeep
+picmag/tests/in/5-person/probe/*
+!picmag/tests/in/5-person/probe/.gitkeep
+picmag/tests/in/5-person/probe-negative/*
+!picmag/tests/in/5-person/probe-negative/.gitkeep

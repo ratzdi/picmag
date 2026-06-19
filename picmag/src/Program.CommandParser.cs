@@ -39,7 +39,15 @@ namespace picmag
             QualityReview,
             QualityScanExisting,
             ScheduleImport,
-            UnscheduleImport
+            UnscheduleImport,
+            PersonScanExisting,
+            PersonAdd,
+            PersonList,
+            PersonLabel,
+            PersonSearch,
+            PersonTrain,
+            PersonPredict,
+            PersonReview
         }
 
         private enum SchedulePeriod
@@ -67,6 +75,15 @@ namespace picmag
             public string ScheduleTime { get; set; } = "02:00";
             public string ScheduleWeekday { get; set; } = "Mon";
             public string BeforeCommand { get; set; }
+            public bool PersonScanOnlyMissing { get; set; } = true;
+            public string PersonName { get; set; }
+            public long? FaceId { get; set; }
+            public bool RejectFaceLabel { get; set; }
+            public int PersonLabelListLimit { get; set; } = 50;
+            public int PersonPredictLimit { get; set; } = 100;
+            public double PersonPredictMinConfidence { get; set; } = 0.75;
+            public string PersonReviewPredictionId { get; set; }
+            public string PersonReviewAction { get; set; }
         }
 
         void Start(string[] args)
@@ -146,9 +163,267 @@ namespace picmag
                     };
                     return true;
 
+                case "--person-scan-existing":
+                    return TryParsePersonScanExistingCommand(args, out request);
+
+                case "--person-add":
+                    return TryParsePersonAddCommand(args, out request);
+
+                case "--person-list":
+                    return TryParsePersonListCommand(args, out request);
+
+                case "--person-label":
+                    return TryParsePersonLabelCommand(args, out request);
+
+                case "--person-search":
+                    return TryParsePersonSearchCommand(args, out request);
+
+                case "--person-train":
+                    return TryParsePersonTrainCommand(args, out request);
+
+                case "--person-predict":
+                    return TryParsePersonPredictCommand(args, out request);
+
+                case "--person-review":
+                    return TryParsePersonReviewCommand(args, out request);
+
                 default:
                     return false;
             }
+        }
+
+        bool TryParsePersonScanExistingCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length < 2)
+                return false;
+
+            var parsed = new CommandRequest
+            {
+                Type = CommandType.PersonScanExisting,
+                TargetPath = args[1],
+                PersonScanOnlyMissing = true
+            };
+
+            for (int i = 2; i < args.Length; i++)
+            {
+                if (args[i] == "--all")
+                {
+                    parsed.PersonScanOnlyMissing = false;
+                }
+                else if (args[i] == "--only-missing")
+                {
+                    parsed.PersonScanOnlyMissing = true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            request = parsed;
+            return true;
+        }
+
+        bool TryParsePersonAddCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length != 3)
+                return false;
+
+            request = new CommandRequest
+            {
+                Type = CommandType.PersonAdd,
+                TargetPath = args[1],
+                PersonName = args[2]
+            };
+            return !string.IsNullOrWhiteSpace(request.PersonName);
+        }
+
+        bool TryParsePersonListCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length != 2)
+                return false;
+
+            request = new CommandRequest
+            {
+                Type = CommandType.PersonList,
+                TargetPath = args[1]
+            };
+            return true;
+        }
+
+        bool TryParsePersonSearchCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length != 3)
+                return false;
+
+            request = new CommandRequest
+            {
+                Type = CommandType.PersonSearch,
+                TargetPath = args[1],
+                PersonName = args[2]
+            };
+            return !string.IsNullOrWhiteSpace(request.PersonName);
+        }
+
+        bool TryParsePersonTrainCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length != 2)
+                return false;
+
+            request = new CommandRequest
+            {
+                Type = CommandType.PersonTrain,
+                TargetPath = args[1]
+            };
+            return true;
+        }
+
+        bool TryParsePersonPredictCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length < 2)
+                return false;
+
+            var parsed = new CommandRequest
+            {
+                Type = CommandType.PersonPredict,
+                TargetPath = args[1],
+                PersonPredictLimit = 100,
+                PersonPredictMinConfidence = 0.75
+            };
+
+            for (int i = 2; i < args.Length; i++)
+            {
+                if (args[i] == "--limit")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    if (!int.TryParse(args[i + 1], out var limit) || limit <= 0)
+                        return false;
+
+                    parsed.PersonPredictLimit = limit;
+                    i++;
+                }
+                else if (args[i] == "--min-confidence")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    if (!double.TryParse(args[i + 1], CultureInfo.InvariantCulture, out var minConf) || minConf < 0 || minConf > 1)
+                        return false;
+
+                    parsed.PersonPredictMinConfidence = minConf;
+                    i++;
+                }
+                else if (args[i].StartsWith("-"))
+                {
+                    return false;
+                }
+            }
+
+            request = parsed;
+            return true;
+        }
+
+        bool TryParsePersonReviewCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length != 4)
+                return false;
+
+            var targetPath = args[1];
+            var prediction_id = args[2];
+            var action = args[3].ToLowerInvariant();
+
+            if (string.IsNullOrWhiteSpace(targetPath))
+                return false;
+
+            if (action != "--accept" && action != "--reject")
+                return false;
+
+            request = new CommandRequest
+            {
+                Type = CommandType.PersonReview,
+                TargetPath = targetPath,
+                PersonReviewPredictionId = prediction_id,
+                PersonReviewAction = action == "--accept" ? "confirm" : "reject"
+            };
+            return true;
+        }
+
+        bool TryParsePersonLabelCommand(string[] args, out CommandRequest request)
+        {
+            request = null;
+            if (args.Length < 2)
+                return false;
+
+            var parsed = new CommandRequest
+            {
+                Type = CommandType.PersonLabel,
+                TargetPath = args[1],
+                PersonLabelListLimit = 50
+            };
+
+            for (int i = 2; i < args.Length; i++)
+            {
+                if (args[i] == "--face-id")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    if (!long.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var faceId))
+                        return false;
+
+                    parsed.FaceId = faceId;
+                    i++;
+                }
+                else if (args[i] == "--person")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    parsed.PersonName = args[i + 1];
+                    i++;
+                }
+                else if (args[i] == "--reject")
+                {
+                    parsed.RejectFaceLabel = true;
+                }
+                else if (args[i] == "--limit")
+                {
+                    if (i + 1 >= args.Length)
+                        return false;
+
+                    if (!int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var limit))
+                        return false;
+
+                    parsed.PersonLabelListLimit = limit;
+                    i++;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            if (parsed.RejectFaceLabel && !string.IsNullOrWhiteSpace(parsed.PersonName))
+                return false;
+
+            if ((parsed.FaceId.HasValue && !parsed.RejectFaceLabel && string.IsNullOrWhiteSpace(parsed.PersonName))
+                || (!parsed.FaceId.HasValue && (parsed.RejectFaceLabel || !string.IsNullOrWhiteSpace(parsed.PersonName))))
+                return false;
+
+            if (parsed.PersonLabelListLimit < 1)
+                return false;
+
+            request = parsed;
+            return true;
         }
 
         bool TryParseScheduleImportCommand(string[] args, out CommandRequest request)

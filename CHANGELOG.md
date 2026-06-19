@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-06
+
+### Added
+
+- MVP commands for manual person tagging workflow: `--person-scan-existing`, `--person-add`, `--person-list`, `--person-label`, `--person-search`.
+- SQLite persistence for persons, detected faces, embeddings, and face labels for review-driven identification.
+- Optional ONNX embedding backend for face vectors via environment variable `PICMAG_FACE_EMBEDDING_MODEL`, with automatic fallback to deterministic mock embeddings.
+- Optional ONNX face-detection backend for multi-face images via `PICMAG_FACE_DETECTION_MODEL` (with configurable threshold/NMS/max faces and fallback behavior).
+- Unit tests for person-recognition persistence and labeling flows (`PersonRecognitionTablesTests`).
+- Integration test coverage for end-to-end person-recognition workflows with train/probe/probe-negative datasets.
+- Test dataset tooling for free, attributed person images (`scripts/download_person_test_images.py`) and attribution manifest support (`LICENSES.tsv`).
+
+### Changed
+
+- Person-recognition CLI help and docs were reorganized and extended (README split plus dedicated docs pages).
+- Project now enforces license headers in CI via `scripts/check_license_headers.py`.
+
+### Fixed
+
+- `--person-predict` now parses and passes target path arguments correctly.
+- `--person-review` now validates and parses arguments consistently with documented CLI usage.
+- Prediction confidence values are clamped to a valid range before persistence to prevent runtime failures.
+
 ## [0.5.2] - 2026-04-15
 
 ### Changed

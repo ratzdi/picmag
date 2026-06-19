@@ -284,3 +284,85 @@ test "$quality_count_after_apply_scan" -gt 0
 scan_report_apply=$(ls -1t ./out/13/.picmag/quality-scan-existing-*.log | head -n1)
 test -n "$scan_report_apply"
 grep -q "mode: apply-changes" "$scan_report_apply"
+
+# Integration Test 16: person recognition with real person photos (5 train + 5 probe)
+
+person_dataset_root="${PICMAG_PERSON_ITEST_DATASET:-./in/5-person}"
+train_dataset_dir="$person_dataset_root/train"
+probe_dataset_dir="$person_dataset_root/probe"
+negative_probe_dataset_dir="$person_dataset_root/probe-negative"
+embedding_model_path="../../arcfaceresnet100-8.onnx"
+
+if [ ! -d "$train_dataset_dir" ] || [ ! -d "$probe_dataset_dir" ] || [ ! -d "$negative_probe_dataset_dir" ]; then
+	echo "Skip Integration Test 16: dataset missing. Provide train/probe/probe-negative folders in $person_dataset_root or set PICMAG_PERSON_ITEST_DATASET"
+else
+	train_available=$(find "$train_dataset_dir" -type f \( -iname '*.jpg' -o -iname '*.jpeg' \) | wc -l)
+	probe_available=$(find "$probe_dataset_dir" -type f \( -iname '*.jpg' -o -iname '*.jpeg' \) | wc -l)
+	negative_probe_available=$(find "$negative_probe_dataset_dir" -type f \( -iname '*.jpg' -o -iname '*.jpeg' \) | wc -l)
+
+	if [ "$train_available" -lt 5 ] || [ "$probe_available" -lt 5 ] || [ "$negative_probe_available" -lt 5 ]; then
+		echo "Skip Integration Test 16: need at least 5 JPG/JPEG train, 5 JPG/JPEG probe images of same person, and 5 JPG/JPEG probe-negative images of other persons"
+	elif [ ! -f "$embedding_model_path" ]; then
+		echo "Skip Integration Test 16: embedding model not found at $embedding_model_path"
+	else
+		rm -rf ./out/14
+		mkdir -p ./out/14/train_source ./out/14/probe_source ./out/14/target
+
+		find "$train_dataset_dir" -type f \( -iname '*.jpg' -o -iname '*.jpeg' \) | sort | head -n 5 | while read -r file; do
+			cp "$file" ./out/14/train_source/
+		done
+		find "$probe_dataset_dir" -type f \( -iname '*.jpg' -o -iname '*.jpeg' \) | sort | head -n 5 | while read -r file; do
+			cp "$file" ./out/14/probe_source/
+		done
+		find "$negative_probe_dataset_dir" -type f \( -iname '*.jpg' -o -iname '*.jpeg' \) | sort | head -n 5 | while read -r file; do
+			cp "$file" ./out/14/probe_source/
+		done
+
+		../bin/Debug/netcoreapp8.0/picmag -i ./out/14/train_source ./out/14/target
+
+		train_imported_count=$(sqlite3 ./out/14/target/.picmag/database.sqlite "select count(*) from images;")
+		test "$train_imported_count" -eq 5
+
+		PICMAG_FACE_EMBEDDING_MODEL="$embedding_model_path" ../bin/Debug/netcoreapp8.0/picmag --person-scan-existing ./out/14/target --all
+
+		train_faces_count=$(sqlite3 ./out/14/target/.picmag/database.sqlite "select count(*) from image_faces;")
+		test "$train_faces_count" -ge 5
+
+		../bin/Debug/netcoreapp8.0/picmag --person-add ./out/14/target "Integration Person"
+
+		for face_id in $(sqlite3 ./out/14/target/.picmag/database.sqlite "select f.id from image_faces f join (select image_path, max(detection_confidence) as max_conf from image_faces group by image_path) best on best.image_path = f.image_path and best.max_conf = f.detection_confidence order by f.image_path limit 5;"); do
+			../bin/Debug/netcoreapp8.0/picmag --person-label ./out/14/target --face-id "$face_id" --person "Integration Person"
+		done
+
+		confirmed_labels_count=$(sqlite3 ./out/14/target/.picmag/database.sqlite "select count(*) from image_face_labels where status = 'confirmed';")
+		test "$confirmed_labels_count" -eq 5
+
+		../bin/Debug/netcoreapp8.0/picmag --person-train ./out/14/target
+
+		profiles_count=$(sqlite3 ./out/14/target/.picmag/database.sqlite "select count(*) from person_profiles;")
+		test "$profiles_count" -ge 1
+
+		../bin/Debug/netcoreapp8.0/picmag -i ./out/14/probe_source ./out/14/target
+
+		total_imported_count=$(sqlite3 ./out/14/target/.picmag/database.sqlite "select count(*) from images;")
+		test "$total_imported_count" -eq 15
+
+		PICMAG_FACE_EMBEDDING_MODEL="$embedding_model_path" ../bin/Debug/netcoreapp8.0/picmag --person-scan-existing ./out/14/target --only-missing
+
+		total_faces_count=$(sqlite3 ./out/14/target/.picmag/database.sqlite "select count(*) from image_faces;")
+		test "$total_faces_count" -ge 10
+
+		../bin/Debug/netcoreapp8.0/picmag --person-predict ./out/14/target --limit 10 --min-confidence 0.60
+
+		recognized_probe_count=$(sqlite3 ./out/14/target/.picmag/database.sqlite "select count(distinct f.image_path) from person_predictions pp join image_faces f on f.id = pp.face_id join persons p on p.id = pp.person_id where pp.status = 'suggested' and p.name = 'Integration Person' and f.image_path like '%/obama_probe_%';")
+		test "$recognized_probe_count" -eq 5
+
+		# Current predictor uses closed-set matching against known profiles only.
+		# For negative probe images we therefore assert review behavior, not unknown rejection.
+		negative_probe_suggestions=$(sqlite3 ./out/14/target/.picmag/database.sqlite "select count(distinct f.image_path) from person_predictions pp join image_faces f on f.id = pp.face_id where pp.status = 'suggested' and f.image_path like '%/other_probe_%';")
+		test "$negative_probe_suggestions" -ge 1
+
+		negative_probe_confirmed_labels=$(sqlite3 ./out/14/target/.picmag/database.sqlite "select count(*) from image_face_labels l join image_faces f on f.id = l.image_face_id where l.status = 'confirmed' and f.image_path like '%/other_probe_%';")
+		test "$negative_probe_confirmed_labels" -eq 0
+	fi
+fi
